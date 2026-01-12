@@ -5,7 +5,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
-// Usamos una ruta relativa robusta para Hostinger y subdirectorios
+// Ruta relativa para convivir con cualquier base path (ej: /dbmanager/)
 const API_URL = "api.php";
 const SPECIAL_NAME = 'Objetivos de equipo';
 const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
@@ -138,6 +138,7 @@ const App = () => {
             setIsSyncing(true);
             setApiError(null);
             try {
+                // Forzamos uso de api.php en el mismo directorio
                 const res = await fetch(API_URL + "?t=" + Date.now());
                 if (!res.ok) throw new Error(`HTTP ${res.status}: No se encontró api.php`);
                 
@@ -210,6 +211,7 @@ const App = () => {
 
     const calculateAnualAvg = (mId: string, oId: string) => {
         if (!comp || !data || !comp[mId]) return 0;
+        // Solo contamos los meses donde el flag de validación es explícitamente true
         const validatedMonths = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx] === true);
         if (validatedMonths.length === 0) return 0;
         
@@ -271,8 +273,10 @@ const App = () => {
             MANAGERS.forEach(m => {
                 let score = 0;
                 if (isAccumulated) {
+                    // En acumulado, promediamos todos los meses validados dinámicamente
                     score = calculateAnualAvg(m.id, o.id);
                 } else {
+                    // En vista mensual, mostramos solo si el mes actual está validado
                     const isValid = comp[m.id] && comp[m.id][mIdx];
                     score = isValid ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
@@ -664,7 +668,7 @@ const App = () => {
                                                                     <div className="grid grid-cols-1 gap-3">
                                                                         {obj.sub.map(s => {
                                                                             const sData = oData.s[s.id];
-                                                                            const subAch = isAccumulated ? 0 : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                                            const subAch = isAccumulated ? calculateAnualAvg(m.id, s.id) : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                                             return (
                                                                                 <div key={s.id} className={`bg-white p-4 rounded-2xl border transition-all ${sData.e ? 'border-slate-100 shadow-sm' : 'border-dashed border-slate-200 opacity-40'}`}>
                                                                                     <div className="flex justify-between items-center mb-3">
@@ -679,8 +683,8 @@ const App = () => {
                                                                                             <span className="text-[10px] font-bold text-slate-500 uppercase">{s.name}</span>
                                                                                         </div>
                                                                                         {sData.e && (
-                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(isAccumulated ? 0 : subAch) }}>
-                                                                                                {isAccumulated ? 'Promedio' : subAch + '%'}
+                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(subAch) }}>
+                                                                                                {subAch + '%'}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -691,7 +695,7 @@ const App = () => {
                                                                                                 type="number" 
                                                                                                 step="any" 
                                                                                                 value={isAccumulated ? '' : sData.v} 
-                                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
+                                                                                                placeholder={isAccumulated ? 'Promedio' : '0.0'}
                                                                                                 onChange={e => {
                                                                                                     const newData = {...data};
                                                                                                     newData[m.id][obj.id][mIdx].s[s.id].v = parseFloat(e.target.value) || 0;
@@ -779,7 +783,7 @@ const App = () => {
                                                     {obj.sub.map(s => {
                                                         const sData = oData.s[s.id];
                                                         if (!sData.e) return null;
-                                                        const sAch = isAccumulated ? '---' : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                        const sAch = isAccumulated ? calculateAnualAvg(view, s.id) : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                         const sRule = OBJECTIVE_RULES[s.id];
                                                         const sDefTarget = sRule ? (typeof sRule.target === 'function' ? sRule.target(mIdx) : sRule.target) : 100;
                                                         const sCurTarget = (sData.t !== null && sData.t !== undefined) ? sData.t : sDefTarget;
@@ -793,14 +797,14 @@ const App = () => {
                                                                     </span>
                                                                     <span className="text-sm font-black tabular-nums" style={{ color: sColor }}>{sAch}{typeof sAch === 'number' ? '%' : ''}</span>
                                                                 </div>
-                                                                {!isAccumulated && (
-                                                                    <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
-                                                                        <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
-                                                                            {Number(sAch) > 20 && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
-                                                                        </div>
-                                                                        {Number(sAch) <= 20 && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
+                                                                <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
+                                                                    <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
+                                                                        {Number(sAch) > 20 && !isAccumulated && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
+                                                                        {Number(sAch) > 20 && isAccumulated && <span className="text-xs font-black text-white bar-label-shadow">{sAch}%</span>}
                                                                     </div>
-                                                                )}
+                                                                    {Number(sAch) <= 20 && !isAccumulated && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
+                                                                    {Number(sAch) <= 20 && isAccumulated && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sAch}%</span>}
+                                                                </div>
                                                             </div>
                                                         );
                                                     })}
