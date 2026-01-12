@@ -67,7 +67,8 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
     if (val <= base) return 0;
     if (val >= target) return 100;
     const achievement = ((val - base) / (target - base)) * 100;
-    return Math.max(0, Math.min(100, Math.round(achievement)));
+    const result = Math.max(0, Math.min(100, Math.round(achievement)));
+    return isNaN(result) ? 0 : result;
 };
 
 const OBJECTIVES = [
@@ -209,16 +210,17 @@ const App = () => {
 
     const calculateAnualAvg = (mId, oId) => {
         if (!comp || !data || !comp[mId]) return 0;
-        // Filtramos solo los meses que el manager tiene validados (cerrados)
-        const validated = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx] === true);
-        if (validated.length === 0) return 0;
+        // Identificamos dinámicamente los meses cerrados para este manager
+        const validatedMonths = Object.keys(comp[mId]).filter(key => comp[mId][key] === true);
+        if (validatedMonths.length === 0) return 0;
         
-        const sum = validated.reduce((acc, i) => {
-            const val = getObjectiveAchievement(mId, oId, i);
-            return acc + (isNaN(val) ? 0 : val);
+        const sum = validatedMonths.reduce((acc, key) => {
+            const ach = getObjectiveAchievement(mId, oId, parseInt(key));
+            return acc + (isNaN(ach) ? 0 : ach);
         }, 0);
         
-        return Math.round(sum / validated.length);
+        const avg = sum / validatedMonths.length;
+        return isNaN(avg) ? 0 : Math.round(avg);
     };
 
     const globalAvg = (mId) => {
@@ -226,7 +228,8 @@ const App = () => {
         const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
         if (activeScores.length === 0) return 0;
         const sum = activeScores.reduce((a, b) => a + b, 0);
-        return Math.round(sum / OBJECTIVES.length);
+        const result = Math.round(sum / OBJECTIVES.length);
+        return isNaN(result) ? 0 : result;
     };
 
     const getMonthlyAch = (mId, monthIndex) => {
@@ -237,7 +240,8 @@ const App = () => {
         });
         if (activeObjs.length === 0) return 0;
         const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
-        return Math.round(sum / activeObjs.length);
+        const result = Math.round(sum / activeObjs.length);
+        return isNaN(result) ? 0 : result;
     };
 
     const renderNameWithLink = (name, className) => {
@@ -268,11 +272,11 @@ const App = () => {
             MANAGERS.forEach(m => {
                 let val = 0;
                 if (isAccumulated) {
-                    // En acumulado siempre calculamos el promedio de lo cerrado, sin importar mIdx
+                    // Si es acumulado, calculamos promedio de meses cerrados sin bloqueos
                     val = calculateAnualAvg(m.id, o.id);
                 } else {
-                    // Solo mostramos si el mes seleccionado está cerrado
-                    const isClosed = comp[m.id] && comp[m.id][mIdx] === true;
+                    // Si es mes individual, verificamos si ese mes concreto está cerrado
+                    const isClosed = comp[m.id] && comp[m.id][String(mIdx)] === true;
                     val = isClosed ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
                 point[m.id] = isNaN(val) ? 0 : val;
@@ -286,10 +290,9 @@ const App = () => {
         return MONTHS.map((mName, i) => {
             const monthPoint: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                // Solo mostrar meses validados en la tendencia para evitar caídas a cero erróneas
-                const isClosed = comp[m.id] && comp[m.id][i] === true;
+                const isClosed = comp[m.id] && comp[m.id][String(i)] === true;
                 const val = isClosed ? getMonthlyAch(m.id, i) : null; 
-                monthPoint[m.id] = val;
+                monthPoint[m.id] = isNaN(val) || val === null ? null : val;
             });
             return monthPoint;
         });
@@ -631,7 +634,7 @@ const App = () => {
                                                                                 type="number" 
                                                                                 step="any" 
                                                                                 value={isAccumulated ? '' : oData.v} 
-                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
+                                                                                placeholder={isAccumulated ? 'Promedio' : '0.0'}
                                                                                 onChange={e => {
                                                                                     const newData = {...data};
                                                                                     newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
@@ -692,7 +695,7 @@ const App = () => {
                                                                                                 type="number" 
                                                                                                 step="any" 
                                                                                                 value={isAccumulated ? '' : sData.v} 
-                                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
+                                                                                                placeholder={isAccumulated ? 'Promedio' : '0.0'}
                                                                                                 onChange={e => {
                                                                                                     const newData = {...data};
                                                                                                     newData[m.id][obj.id][mIdx].s[s.id].v = parseFloat(e.target.value) || 0;
