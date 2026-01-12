@@ -67,8 +67,7 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
     if (val <= base) return 0;
     if (val >= target) return 100;
     const achievement = ((val - base) / (target - base)) * 100;
-    const result = Math.max(0, Math.min(100, Math.round(achievement)));
-    return isNaN(result) ? 0 : result;
+    return Math.max(0, Math.min(100, Math.round(achievement)));
 };
 
 const OBJECTIVES = [
@@ -193,60 +192,44 @@ const App = () => {
     };
 
     const getObjectiveAchievement = (mId, oId, monthIndex) => {
-        if (!data || !data[mId]) return 0;
-        const monthKey = parseInt(monthIndex);
-        const objData = data[mId][oId][monthKey];
+        if (!data) return 0;
+        const objData = data[mId][oId][monthIndex];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
-        if (!objMeta || !objData || !objData.e) return 0;
+        if (!objMeta || !objData.e) return 0;
 
         if (!objMeta.sub) {
-            return calculateAch(oId, objData.v, monthKey, objData.t, objData.b);
+            return calculateAch(oId, objData.v, monthIndex, objData.t, objData.b);
         } else {
             const enabledSubs = objMeta.sub.filter(s => objData.s[s.id].e);
             if (enabledSubs.length === 0) return 0;
-            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, monthKey, objData.s[s.id].t, objData.s[s.id].b), 0);
+            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, monthIndex, objData.s[s.id].t, objData.s[s.id].b), 0);
             return Math.round(sum / enabledSubs.length);
         }
     };
 
     const calculateAnualAvg = (mId, oId) => {
-        if (!comp || !data || !comp[mId]) return 0;
-        // Filtramos dinámicamente solo los meses que el manager ha validado
-        const validatedMonths = Object.keys(comp[mId])
-            .filter(idx => comp[mId][idx] === true)
-            .map(idx => parseInt(idx));
-            
-        if (validatedMonths.length === 0) return 0;
-        
-        const sum = validatedMonths.reduce((acc, monthIdx) => {
-            const ach = getObjectiveAchievement(mId, oId, monthIdx);
-            return acc + (isNaN(ach) ? 0 : ach);
-        }, 0);
-        
-        const result = Math.round(sum / validatedMonths.length);
-        return isNaN(result) ? 0 : result;
+        if (!comp || !data) return 0;
+        const validated = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx]);
+        if (validated.length === 0) return 0;
+        const sum = validated.reduce((acc, i) => acc + getObjectiveAchievement(mId, oId, i), 0);
+        return Math.round(sum / validated.length);
     };
 
     const globalAvg = (mId) => {
-        if (!data || !comp) return 0;
+        if (!data) return 0;
         const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
-        if (activeScores.length === 0) return 0;
-        const sum = activeScores.reduce((a, b) => a + b, 0);
-        const result = Math.round(sum / activeScores.length);
-        return isNaN(result) ? 0 : result;
+        return Math.round(activeScores.reduce((a, b) => a + b, 0) / OBJECTIVES.length);
     };
 
     const getMonthlyAch = (mId, monthIndex) => {
         if (!data) return 0;
-        const monthKey = parseInt(monthIndex);
         const activeObjs = OBJECTIVES.filter(o => {
-            const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthKey);
-            return isQuarterlyOk && data[mId][o.id][monthKey]?.e;
+            const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
+            return isQuarterlyOk && data[mId][o.id][monthIndex].e;
         });
         if (activeObjs.length === 0) return 0;
-        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthKey), 0);
-        const result = Math.round(sum / activeObjs.length);
-        return isNaN(result) ? 0 : result;
+        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
+        return Math.round(sum / activeObjs.length);
     };
 
     const renderNameWithLink = (name, className) => {
@@ -273,31 +256,24 @@ const App = () => {
     const radarData = useMemo(() => {
         if (!data || !comp) return [];
         return OBJECTIVES.map(o => {
-            const point: any = { subject: o.name };
+            const point = { subject: o.name };
             MANAGERS.forEach(m => {
-                let score = 0;
-                if (isAccumulated) {
-                    // En acumulado usamos el promedio dinámico de meses validados
-                    score = calculateAnualAvg(m.id, o.id);
-                } else {
-                    // Solo mostramos si el mes actual está validado
-                    const isValid = comp[m.id] && comp[m.id][mIdx] === true;
-                    score = isValid ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
-                }
-                point[m.id] = isNaN(score) ? 0 : score;
+                // Solo mostrar datos validados en el radar global
+                point[m.id] = isAccumulated 
+                    ? calculateAnualAvg(m.id, o.id) 
+                    : (comp[m.id][mIdx] ? getObjectiveAchievement(m.id, o.id, mIdx) : 0);
             });
             return point;
         });
-    }, [data, activeMonth, comp, isAccumulated, mIdx]);
+    }, [data, activeMonth, comp]);
 
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
-            const monthPoint: any = { name: mName.substring(0, 3) };
+            const monthPoint = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                const isValid = comp[m.id] && comp[m.id][i] === true;
-                const ach = isValid ? getMonthlyAch(m.id, i) : 0;
-                monthPoint[m.id] = isNaN(ach) ? 0 : ach;
+                // Solo mostrar datos validados en la gráfica de tendencia
+                monthPoint[m.id] = comp[m.id][i] ? getMonthlyAch(m.id, i) : 0;
             });
             return monthPoint;
         });
@@ -638,7 +614,7 @@ const App = () => {
                                                                                 type="number" 
                                                                                 step="any" 
                                                                                 value={isAccumulated ? '' : oData.v} 
-                                                                                placeholder={isAccumulated ? 'Promedio' : '0.0'}
+                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
                                                                                 onChange={e => {
                                                                                     const newData = {...data};
                                                                                     newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
@@ -672,7 +648,7 @@ const App = () => {
                                                                     <div className="grid grid-cols-1 gap-3">
                                                                         {obj.sub.map(s => {
                                                                             const sData = oData.s[s.id];
-                                                                            const subAch = isAccumulated ? calculateAnualAvg(m.id, s.id) : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                                            const subAch = isAccumulated ? 0 : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                                             return (
                                                                                 <div key={s.id} className={`bg-white p-4 rounded-2xl border transition-all ${sData.e ? 'border-slate-100 shadow-sm' : 'border-dashed border-slate-200 opacity-40'}`}>
                                                                                     <div className="flex justify-between items-center mb-3">
@@ -687,8 +663,8 @@ const App = () => {
                                                                                             <span className="text-[10px] font-bold text-slate-500 uppercase">{s.name}</span>
                                                                                         </div>
                                                                                         {sData.e && (
-                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(subAch) }}>
-                                                                                                {subAch + '%'}
+                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(isAccumulated ? 0 : subAch) }}>
+                                                                                                {isAccumulated ? 'Promedio' : subAch + '%'}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -699,7 +675,7 @@ const App = () => {
                                                                                                 type="number" 
                                                                                                 step="any" 
                                                                                                 value={isAccumulated ? '' : sData.v} 
-                                                                                                placeholder={isAccumulated ? 'Promedio' : '0.0'}
+                                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
                                                                                                 onChange={e => {
                                                                                                     const newData = {...data};
                                                                                                     newData[m.id][obj.id][mIdx].s[s.id].v = parseFloat(e.target.value) || 0;
@@ -749,7 +725,7 @@ const App = () => {
                                 {OBJECTIVES.map(obj => {
                                     if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                                     const oData = data[view][obj.id][mIdx];
-                                    if (!oData || !oData.e) return null;
+                                    if (!oData.e) return null;
 
                                     const ach = isAccumulated ? calculateAnualAvg(view, obj.id) : getObjectiveAchievement(view, obj.id, mIdx);
                                     const rule = OBJECTIVE_RULES[obj.id];
@@ -787,7 +763,7 @@ const App = () => {
                                                     {obj.sub.map(s => {
                                                         const sData = oData.s[s.id];
                                                         if (!sData.e) return null;
-                                                        const sAch = isAccumulated ? calculateAnualAvg(view, s.id) : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                        const sAch = isAccumulated ? '---' : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                         const sRule = OBJECTIVE_RULES[s.id];
                                                         const sDefTarget = sRule ? (typeof sRule.target === 'function' ? sRule.target(mIdx) : sRule.target) : 100;
                                                         const sCurTarget = (sData.t !== null && sData.t !== undefined) ? sData.t : sDefTarget;
@@ -801,14 +777,14 @@ const App = () => {
                                                                     </span>
                                                                     <span className="text-sm font-black tabular-nums" style={{ color: sColor }}>{sAch}{typeof sAch === 'number' ? '%' : ''}</span>
                                                                 </div>
-                                                                <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
-                                                                    <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
-                                                                        {Number(sAch) > 20 && !isAccumulated && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
-                                                                        {Number(sAch) > 20 && isAccumulated && <span className="text-xs font-black text-white bar-label-shadow">{sAch}%</span>}
+                                                                {!isAccumulated && (
+                                                                    <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
+                                                                        <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
+                                                                            {Number(sAch) > 20 && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
+                                                                        </div>
+                                                                        {Number(sAch) <= 20 && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
                                                                     </div>
-                                                                    {Number(sAch) <= 20 && !isAccumulated && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
-                                                                    {Number(sAch) <= 20 && isAccumulated && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sAch}%</span>}
-                                                                </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
