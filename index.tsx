@@ -5,7 +5,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
-// Ruta relativa para convivir con cualquier base path (ej: /dbmanager/)
+// Usamos una ruta relativa robusta para Hostinger y subdirectorios
 const API_URL = "api.php";
 const SPECIAL_NAME = 'Objetivos de equipo';
 const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
@@ -138,7 +138,6 @@ const App = () => {
             setIsSyncing(true);
             setApiError(null);
             try {
-                // Forzamos uso de api.php en el mismo directorio
                 const res = await fetch(API_URL + "?t=" + Date.now());
                 if (!res.ok) throw new Error(`HTTP ${res.status}: No se encontró api.php`);
                 
@@ -193,26 +192,30 @@ const App = () => {
         saveToDb(newData, newComp);
     };
 
-    const getObjectiveAchievement = (mId: string, oId: string, monthIndex: number) => {
+    const getObjectiveAchievement = (mId, oId, monthIndex) => {
         if (!data || !data[mId]) return 0;
-        const objData = data[mId][oId][monthIndex];
+        const monthKey = parseInt(monthIndex);
+        const objData = data[mId][oId][monthKey];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
         if (!objMeta || !objData || !objData.e) return 0;
 
         if (!objMeta.sub) {
-            return calculateAch(oId, objData.v, monthIndex, objData.t, objData.b);
+            return calculateAch(oId, objData.v, monthKey, objData.t, objData.b);
         } else {
             const enabledSubs = objMeta.sub.filter(s => objData.s[s.id].e);
             if (enabledSubs.length === 0) return 0;
-            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, monthIndex, objData.s[s.id].t, objData.s[s.id].b), 0);
+            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, monthKey, objData.s[s.id].t, objData.s[s.id].b), 0);
             return Math.round(sum / enabledSubs.length);
         }
     };
 
-    const calculateAnualAvg = (mId: string, oId: string) => {
+    const calculateAnualAvg = (mId, oId) => {
         if (!comp || !data || !comp[mId]) return 0;
-        // Solo contamos los meses donde el flag de validación es explícitamente true
-        const validatedMonths = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx] === true);
+        // Filtramos dinámicamente solo los meses que el manager ha validado
+        const validatedMonths = Object.keys(comp[mId])
+            .filter(idx => comp[mId][idx] === true)
+            .map(idx => parseInt(idx));
+            
         if (validatedMonths.length === 0) return 0;
         
         const sum = validatedMonths.reduce((acc, monthIdx) => {
@@ -220,29 +223,30 @@ const App = () => {
             return acc + (isNaN(ach) ? 0 : ach);
         }, 0);
         
-        const avg = sum / validatedMonths.length;
-        return isNaN(avg) ? 0 : Math.round(avg);
+        const result = Math.round(sum / validatedMonths.length);
+        return isNaN(result) ? 0 : result;
     };
 
-    const globalAvg = (mId: string) => {
+    const globalAvg = (mId) => {
         if (!data || !comp) return 0;
         const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
         if (activeScores.length === 0) return 0;
         const sum = activeScores.reduce((a, b) => a + b, 0);
-        const avg = sum / activeScores.length;
-        return isNaN(avg) ? 0 : Math.round(avg);
+        const result = Math.round(sum / activeScores.length);
+        return isNaN(result) ? 0 : result;
     };
 
-    const getMonthlyAch = (mId: string, monthIndex: number) => {
+    const getMonthlyAch = (mId, monthIndex) => {
         if (!data) return 0;
+        const monthKey = parseInt(monthIndex);
         const activeObjs = OBJECTIVES.filter(o => {
-            const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
-            return isQuarterlyOk && data[mId][o.id][monthIndex].e;
+            const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthKey);
+            return isQuarterlyOk && data[mId][o.id][monthKey]?.e;
         });
         if (activeObjs.length === 0) return 0;
-        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
-        const avg = sum / activeObjs.length;
-        return isNaN(avg) ? 0 : Math.round(avg);
+        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthKey), 0);
+        const result = Math.round(sum / activeObjs.length);
+        return isNaN(result) ? 0 : result;
     };
 
     const renderNameWithLink = (name, className) => {
@@ -273,11 +277,11 @@ const App = () => {
             MANAGERS.forEach(m => {
                 let score = 0;
                 if (isAccumulated) {
-                    // En acumulado, promediamos todos los meses validados dinámicamente
+                    // En acumulado usamos el promedio dinámico de meses validados
                     score = calculateAnualAvg(m.id, o.id);
                 } else {
-                    // En vista mensual, mostramos solo si el mes actual está validado
-                    const isValid = comp[m.id] && comp[m.id][mIdx];
+                    // Solo mostramos si el mes actual está validado
+                    const isValid = comp[m.id] && comp[m.id][mIdx] === true;
                     score = isValid ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
                 point[m.id] = isNaN(score) ? 0 : score;
@@ -291,7 +295,7 @@ const App = () => {
         return MONTHS.map((mName, i) => {
             const monthPoint: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                const isValid = comp[m.id] && comp[m.id][i];
+                const isValid = comp[m.id] && comp[m.id][i] === true;
                 const ach = isValid ? getMonthlyAch(m.id, i) : 0;
                 monthPoint[m.id] = isNaN(ach) ? 0 : ach;
             });
@@ -634,7 +638,7 @@ const App = () => {
                                                                                 type="number" 
                                                                                 step="any" 
                                                                                 value={isAccumulated ? '' : oData.v} 
-                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
+                                                                                placeholder={isAccumulated ? 'Promedio' : '0.0'}
                                                                                 onChange={e => {
                                                                                     const newData = {...data};
                                                                                     newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
