@@ -5,6 +5,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
+// Aseguramos que apunte al archivo en la misma carpeta
 const API_URL = "api.php";
 const SPECIAL_NAME = 'Objetivos de equipo';
 const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
@@ -85,12 +86,13 @@ const getHeatColor = (val) => {
 };
 
 const App = () => {
-    const [activeMonth, setActiveMonth] = useState('accumulated'); // Default set to 'accumulated'
+    const [activeMonth, setActiveMonth] = useState('accumulated');
     const [view, setView] = useState('comparison');
     const [editorRole, setEditorRole] = useState(null); 
     const [editorFilter, setEditorFilter] = useState('all'); 
     const [password, setPassword] = useState('');
     const [isSyncing, setIsSyncing] = useState(false);
+    const [apiError, setApiError] = useState(null);
     const [data, setData] = useState(null);
     const [comp, setComp] = useState(null);
     const [managerMenuOpen, setManagerMenuOpen] = useState(false);
@@ -130,22 +132,33 @@ const App = () => {
     useEffect(() => {
         const load = async () => {
             setIsSyncing(true);
+            setApiError(null);
             try {
                 const res = await fetch(API_URL);
-                const text = await res.text();
-                if (text && !text.includes('<?php')) {
-                    const json = JSON.parse(text);
-                    if (json && json.data) {
-                        setData(json.data);
-                        setComp(json.completions);
-                        return;
-                    }
+                
+                if (!res.ok) {
+                    throw new Error(`Error ${res.status}: No se encontró api.php`);
                 }
-                initializeDefault();
-            } catch (e) {
+
+                const contentType = res.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("El servidor no devolvió JSON. Revisa la ruta de api.php.");
+                }
+
+                const json = await res.json();
+                if (json && json.data) {
+                    setData(json.data);
+                    setComp(json.completions);
+                } else {
+                    initializeDefault();
+                }
+            } catch (e: any) {
                 console.error("API Error:", e);
+                setApiError(e.message);
                 initializeDefault();
-            } finally { setIsSyncing(false); }
+            } finally { 
+                setIsSyncing(false); 
+            }
         };
         load();
 
@@ -160,12 +173,16 @@ const App = () => {
     const saveToDb = async (newData, newComp) => {
         setIsSyncing(true);
         try {
-            await fetch(API_URL, {
+            const res = await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ data: newData, completions: newComp })
             });
-        } catch (e) { console.error("Save Error:", e); } finally { setIsSyncing(false); }
+            if (!res.ok) throw new Error("Fallo al guardar");
+        } catch (e) { 
+            console.error("Save Error:", e);
+            setApiError("Error al guardar datos.");
+        } finally { setIsSyncing(false); }
     };
 
     const handleUpdate = (newData, newComp) => {
@@ -178,7 +195,7 @@ const App = () => {
         if (!data) return 0;
         const objData = data[mId][oId][mIdx];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
-        if (!objData.e) return 0;
+        if (!objMeta || !objData.e) return 0;
 
         if (!objMeta.sub) {
             return calculateAch(oId, objData.v, mIdx, objData.t, objData.b);
@@ -265,12 +282,24 @@ const App = () => {
 
     if (!data) return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-400">
-            <i className="fas fa-spinner fa-spin mr-3 text-2xl"></i> Cargando...
+            <div className="text-center">
+                <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
+                <p className="uppercase tracking-widest text-xs">Cargando base de datos...</p>
+                {apiError && <p className="mt-4 text-red-500 text-[10px]">{apiError}</p>}
+            </div>
         </div>
     );
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
+            {apiError && (
+                <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 text-center sticky top-0 z-[2000] flex items-center justify-center gap-4">
+                    <i className="fas fa-exclamation-circle"></i>
+                    {apiError}
+                    <button onClick={() => window.location.reload()} className="bg-white text-red-600 px-3 py-1 rounded-full text-[8px]">REINTENTAR</button>
+                </div>
+            )}
+            
             <header className="bg-white/95 backdrop-blur-xl border-b sticky top-0 z-[1000] px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-6 shadow-sm w-full">
                 <div className="flex items-center gap-4 cursor-pointer" onClick={() => setView('comparison')}>
                     <div className="bg-slate-900 text-white w-12 h-12 rounded-[1rem] flex items-center justify-center shadow-lg">
@@ -396,7 +425,6 @@ const App = () => {
                     <div className="w-full space-y-12 animate-fade-in px-4 lg:px-0">
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-full">
                             <div className="lg:col-span-8 space-y-8 flex flex-col">
-                                {/* Radar Chart Card */}
                                 <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm flex flex-col">
                                     <div className="flex justify-between items-center mb-10">
                                         <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-800">Rendimiento Estratégico</h3>
@@ -424,8 +452,6 @@ const App = () => {
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
-
-                                {/* Trend Chart Card */}
                                 <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm flex flex-col h-[450px]">
                                     <div className="flex justify-between items-center mb-10">
                                         <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-800">Evolución de Eficiencia</h3>
@@ -696,8 +722,8 @@ const App = () => {
                                                         {ach <= 15 && <span className="absolute left-6 top-0 h-full flex items-center text-2xl font-black text-slate-400">{oData.v}{unit}</span>}
                                                     </div>
                                                     <div className="flex justify-between mt-4 px-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-80">
-                                                        <span className={oData.b !== null ? 'text-emerald-500 font-black' : ''}>Min: {currentBase}{unit}</span>
-                                                        <span className={oData.t !== null ? 'text-indigo-500 font-black' : ''}>Obj: {currentTarget}{unit}</span>
+                                                        <span>Min: {currentBase}{unit}</span>
+                                                        <span>Obj: {currentTarget}{unit}</span>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -709,9 +735,6 @@ const App = () => {
                                                         const sRule = OBJECTIVE_RULES[s.id];
                                                         const sDefaultTarget = sRule ? (typeof sRule.target === 'function' ? sRule.target(mIdx) : sRule.target) : 100;
                                                         const sCurrentTarget = (sData.t !== null && sData.t !== undefined) ? sData.t : sDefaultTarget;
-                                                        const sDefaultBase = sRule ? (typeof sRule.base === 'function' ? sRule.base(mIdx) : sRule.base) : 0;
-                                                        const sCurrentBase = (sData.b !== null && sData.b !== undefined) ? sData.b : sDefaultBase;
-                                                        // Fixed sUnit assignment below
                                                         const sUnit = sRule ? sRule.unit : '%';
                                                         const sColor = getHeatColor(sAch);
                                                         return (
@@ -727,10 +750,6 @@ const App = () => {
                                                                         {sAch > 20 && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
                                                                     </div>
                                                                     {sAch <= 20 && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
-                                                                </div>
-                                                                <div className="flex justify-between mt-2 px-1 opacity-40 text-[9px] font-black text-slate-500 uppercase">
-                                                                    <span className={sData.b !== null ? 'text-emerald-600 font-black' : ''}>MIN: {sCurrentBase}{sUnit}</span>
-                                                                    <span className={sData.t !== null ? 'text-indigo-600 font-black' : ''}>OBJ: {sCurrentTarget}{sUnit}</span>
                                                                 </div>
                                                             </div>
                                                         );
