@@ -5,7 +5,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
-// Usamos una ruta relativa simple para que funcione con el base /dbmanager/
+// Usamos una ruta relativa robusta para Hostinger y subdirectorios
 const API_URL = "api.php";
 const SPECIAL_NAME = 'Objetivos de equipo';
 const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
@@ -101,6 +101,9 @@ const App = () => {
     const managerMenuRef = useRef(null);
     const monthMenuRef = useRef(null);
 
+    const isAccumulated = activeMonth === 'accumulated';
+    const mIdx = isAccumulated ? 11 : parseInt(activeMonth);
+
     const initializeDefault = () => {
         const initData = {};
         const initComp = {};
@@ -134,12 +137,15 @@ const App = () => {
             setIsSyncing(true);
             setApiError(null);
             try {
-                const res = await fetch(API_URL);
-                if (!res.ok) throw new Error(`Error de conexión: ${res.status} al buscar api.php`);
+                // Forzamos que la ruta sea relativa al directorio actual
+                const res = await fetch(API_URL + "?t=" + Date.now());
+                if (!res.ok) throw new Error(`HTTP ${res.status}: No se encontró api.php`);
+                
                 const contentType = res.headers.get("content-type");
                 if (!contentType || !contentType.includes("application/json")) {
-                    throw new Error("El servidor no devolvió JSON. Posible error de ruta de api.php (está recibiendo HTML o error 404).");
+                    throw new Error("El servidor no devolvió JSON. Revisa la ruta de api.php.");
                 }
+
                 const json = await res.json();
                 if (json && json.data) {
                     setData(json.data);
@@ -148,7 +154,7 @@ const App = () => {
                     initializeDefault();
                 }
             } catch (e: any) {
-                console.error("API Error:", e);
+                console.error("API Load Error:", e);
                 setApiError(e.message);
                 initializeDefault();
             } finally { 
@@ -180,24 +186,24 @@ const App = () => {
     };
 
     const handleUpdate = (newData, newComp) => {
-        if (isAccumulated) return; // Protección contra edición en modo acumulado
+        if (isAccumulated) return; // Bloqueo total si es acumulado
         setData({...newData});
         setComp({...newComp});
         saveToDb(newData, newComp);
     };
 
-    const getObjectiveAchievement = (mId, oId, mIdx) => {
+    const getObjectiveAchievement = (mId, oId, monthIndex) => {
         if (!data) return 0;
-        const objData = data[mId][oId][mIdx];
+        const objData = data[mId][oId][monthIndex];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
         if (!objMeta || !objData.e) return 0;
 
         if (!objMeta.sub) {
-            return calculateAch(oId, objData.v, mIdx, objData.t, objData.b);
+            return calculateAch(oId, objData.v, monthIndex, objData.t, objData.b);
         } else {
             const enabledSubs = objMeta.sub.filter(s => objData.s[s.id].e);
             if (enabledSubs.length === 0) return 0;
-            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, mIdx, objData.s[s.id].t, objData.s[s.id].b), 0);
+            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, monthIndex, objData.s[s.id].t, objData.s[s.id].b), 0);
             return Math.round(sum / enabledSubs.length);
         }
     };
@@ -216,14 +222,14 @@ const App = () => {
         return Math.round(activeScores.reduce((a, b) => a + b, 0) / OBJECTIVES.length);
     };
 
-    const getMonthlyAch = (mId, mIdx) => {
+    const getMonthlyAch = (mId, monthIndex) => {
         if (!data) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
-            const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(mIdx);
-            return isQuarterlyOk && data[mId][o.id][mIdx].e;
+            const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
+            return isQuarterlyOk && data[mId][o.id][monthIndex].e;
         });
         if (activeObjs.length === 0) return 0;
-        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, mIdx), 0);
+        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
         return Math.round(sum / activeObjs.length);
     };
 
@@ -237,9 +243,6 @@ const App = () => {
         }
         return <span className={className}>{name}</span>;
     };
-
-    const isAccumulated = activeMonth === 'accumulated';
-    const mIdx = isAccumulated ? 11 : parseInt(activeMonth);
 
     const getQuarterSuffix = (idx) => {
         if (idx === 2) return " - 1º Trimestre";
@@ -262,7 +265,7 @@ const App = () => {
             });
             return point;
         });
-    }, [data, isAccumulated, mIdx]);
+    }, [data, activeMonth]);
 
     const trendData = useMemo(() => {
         if (!data) return [];
@@ -278,7 +281,7 @@ const App = () => {
     if (!data) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
             <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
-            <p className="uppercase tracking-widest text-xs">Cargando Dashboard...</p>
+            <p className="uppercase tracking-widest text-xs">Sincronizando Dashboard...</p>
             {apiError && <p className="mt-4 text-red-500 text-[10px] font-bold max-w-xs text-center">{apiError}</p>}
         </div>
     );
@@ -286,10 +289,10 @@ const App = () => {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             {apiError && (
-                <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 text-center sticky top-0 z-[2000] flex items-center justify-center gap-4 shadow-lg">
+                <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 text-center sticky top-0 z-[2000] flex items-center justify-center gap-4 shadow-xl">
                     <i className="fas fa-exclamation-circle text-lg"></i>
                     API Error: {apiError}
-                    <button onClick={() => window.location.reload()} className="bg-white text-red-600 px-4 py-1 rounded-full text-[10px] font-black hover:bg-slate-100 transition-colors">RECARGAR</button>
+                    <button onClick={() => window.location.reload()} className="bg-white text-red-600 px-4 py-1 rounded-full text-[10px] font-black hover:bg-slate-100 transition-colors">REINTENTAR</button>
                 </div>
             )}
             
@@ -518,8 +521,8 @@ const App = () => {
                                     <div>
                                         <h4 className="text-sm font-black uppercase text-amber-900 tracking-widest">Editor en Modo Lectura</h4>
                                         <p className="text-[11px] font-bold text-amber-800/70 mt-2 uppercase max-w-md">
-                                            El acumulado es un cálculo total de los meses cerrados. 
-                                            Para editar, seleccione un mes específico en el calendario.
+                                            El acumulado no se puede editar ya que es el cálculo automático de los meses cerrados. 
+                                            Para editar, seleccione un mes específico.
                                         </p>
                                     </div>
                                 </div>
@@ -555,7 +558,7 @@ const App = () => {
                                                 <div>
                                                     <h3 className="text-lg font-black uppercase text-slate-800 tracking-tighter">{m.name}</h3>
                                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                                        {isAccumulated ? 'TOTAL ANUAL' : (editorRole === 'super' ? 'SUPER CONFIG' : 'VALORES MES')}
+                                                        {isAccumulated ? 'TOTAL ANUAL (LECTURA)' : (editorRole === 'super' ? 'SUPER CONFIG' : 'VALORES MES')}
                                                     </p>
                                                 </div>
                                             </div>
@@ -572,6 +575,7 @@ const App = () => {
                                             {OBJECTIVES.map(obj => {
                                                 if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                                                 const oData = data[m.id][obj.id][mIdx];
+                                                const achVal = isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx);
                                                 
                                                 return (
                                                     <div key={obj.id} className={`p-6 rounded-[2rem] border transition-all ${oData.e ? 'bg-slate-50 border-slate-100' : 'bg-slate-100 border-dashed border-slate-200 opacity-60'}`}>
@@ -592,8 +596,8 @@ const App = () => {
                                                                 </h4>
                                                             </div>
                                                             {oData.e && (
-                                                                <span className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-white border shadow-sm" style={{ color: getHeatColor(isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx)) }}>
-                                                                    {isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx)}%
+                                                                <span className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-white border shadow-sm" style={{ color: getHeatColor(achVal) }}>
+                                                                    {achVal}%
                                                                 </span>
                                                             )}
                                                         </div>
@@ -643,7 +647,7 @@ const App = () => {
                                                                     <div className="grid grid-cols-1 gap-3">
                                                                         {obj.sub.map(s => {
                                                                             const sData = oData.s[s.id];
-                                                                            const sDefRule = OBJECTIVE_RULES[s.id];
+                                                                            const subAch = isAccumulated ? 0 : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                                             return (
                                                                                 <div key={s.id} className={`bg-white p-4 rounded-2xl border transition-all ${sData.e ? 'border-slate-100 shadow-sm' : 'border-dashed border-slate-200 opacity-40'}`}>
                                                                                     <div className="flex justify-between items-center mb-3">
@@ -658,8 +662,8 @@ const App = () => {
                                                                                             <span className="text-[10px] font-bold text-slate-500 uppercase">{s.name}</span>
                                                                                         </div>
                                                                                         {sData.e && (
-                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(isAccumulated ? 0 : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b)) }}>
-                                                                                                {isAccumulated ? '---' : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b) + '%'}
+                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(subAch) }}>
+                                                                                                {isAccumulated ? 'Promedio' : subAch + '%'}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -670,7 +674,7 @@ const App = () => {
                                                                                                 type="number" 
                                                                                                 step="any" 
                                                                                                 value={isAccumulated ? '' : sData.v} 
-                                                                                                placeholder={isAccumulated ? 'Auto' : '0.0'}
+                                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
                                                                                                 onChange={e => {
                                                                                                     const newData = {...data};
                                                                                                     newData[m.id][obj.id][mIdx].s[s.id].v = parseFloat(e.target.value) || 0;
