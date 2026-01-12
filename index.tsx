@@ -67,7 +67,8 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
     if (val <= base) return 0;
     if (val >= target) return 100;
     const achievement = ((val - base) / (target - base)) * 100;
-    return Math.max(0, Math.min(100, Math.round(achievement)));
+    const result = Math.max(0, Math.min(100, Math.round(achievement)));
+    return isNaN(result) ? 0 : result;
 };
 
 const OBJECTIVES = [
@@ -191,11 +192,11 @@ const App = () => {
         saveToDb(newData, newComp);
     };
 
-    const getObjectiveAchievement = (mId, oId, monthIndex) => {
-        if (!data) return 0;
+    const getObjectiveAchievement = (mId: string, oId: string, monthIndex: number) => {
+        if (!data || !data[mId]) return 0;
         const objData = data[mId][oId][monthIndex];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
-        if (!objMeta || !objData.e) return 0;
+        if (!objMeta || !objData || !objData.e) return 0;
 
         if (!objMeta.sub) {
             return calculateAch(oId, objData.v, monthIndex, objData.t, objData.b);
@@ -207,21 +208,30 @@ const App = () => {
         }
     };
 
-    const calculateAnualAvg = (mId, oId) => {
-        if (!comp || !data) return 0;
-        const validated = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx]);
-        if (validated.length === 0) return 0;
-        const sum = validated.reduce((acc, i) => acc + getObjectiveAchievement(mId, oId, i), 0);
-        return Math.round(sum / validated.length);
+    const calculateAnualAvg = (mId: string, oId: string) => {
+        if (!comp || !data || !comp[mId]) return 0;
+        const validatedMonths = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx] === true);
+        if (validatedMonths.length === 0) return 0;
+        
+        const sum = validatedMonths.reduce((acc, monthIdx) => {
+            const ach = getObjectiveAchievement(mId, oId, monthIdx);
+            return acc + (isNaN(ach) ? 0 : ach);
+        }, 0);
+        
+        const avg = sum / validatedMonths.length;
+        return isNaN(avg) ? 0 : Math.round(avg);
     };
 
-    const globalAvg = (mId) => {
-        if (!data) return 0;
+    const globalAvg = (mId: string) => {
+        if (!data || !comp) return 0;
         const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
-        return Math.round(activeScores.reduce((a, b) => a + b, 0) / OBJECTIVES.length);
+        if (activeScores.length === 0) return 0;
+        const sum = activeScores.reduce((a, b) => a + b, 0);
+        const avg = sum / activeScores.length;
+        return isNaN(avg) ? 0 : Math.round(avg);
     };
 
-    const getMonthlyAch = (mId, monthIndex) => {
+    const getMonthlyAch = (mId: string, monthIndex: number) => {
         if (!data) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
             const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
@@ -229,7 +239,8 @@ const App = () => {
         });
         if (activeObjs.length === 0) return 0;
         const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
-        return Math.round(sum / activeObjs.length);
+        const avg = sum / activeObjs.length;
+        return isNaN(avg) ? 0 : Math.round(avg);
     };
 
     const renderNameWithLink = (name, className) => {
@@ -256,24 +267,29 @@ const App = () => {
     const radarData = useMemo(() => {
         if (!data || !comp) return [];
         return OBJECTIVES.map(o => {
-            const point = { subject: o.name };
+            const point: any = { subject: o.name };
             MANAGERS.forEach(m => {
-                // Solo mostrar datos validados en el radar global
-                point[m.id] = isAccumulated 
-                    ? calculateAnualAvg(m.id, o.id) 
-                    : (comp[m.id][mIdx] ? getObjectiveAchievement(m.id, o.id, mIdx) : 0);
+                let score = 0;
+                if (isAccumulated) {
+                    score = calculateAnualAvg(m.id, o.id);
+                } else {
+                    const isValid = comp[m.id] && comp[m.id][mIdx];
+                    score = isValid ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
+                }
+                point[m.id] = isNaN(score) ? 0 : score;
             });
             return point;
         });
-    }, [data, activeMonth, comp]);
+    }, [data, activeMonth, comp, isAccumulated, mIdx]);
 
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
-            const monthPoint = { name: mName.substring(0, 3) };
+            const monthPoint: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                // Solo mostrar datos validados en la gráfica de tendencia
-                monthPoint[m.id] = comp[m.id][i] ? getMonthlyAch(m.id, i) : 0;
+                const isValid = comp[m.id] && comp[m.id][i];
+                const ach = isValid ? getMonthlyAch(m.id, i) : 0;
+                monthPoint[m.id] = isNaN(ach) ? 0 : ach;
             });
             return monthPoint;
         });
@@ -725,7 +741,7 @@ const App = () => {
                                 {OBJECTIVES.map(obj => {
                                     if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                                     const oData = data[view][obj.id][mIdx];
-                                    if (!oData.e) return null;
+                                    if (!oData || !oData.e) return null;
 
                                     const ach = isAccumulated ? calculateAnualAvg(view, obj.id) : getObjectiveAchievement(view, obj.id, mIdx);
                                     const rule = OBJECTIVE_RULES[obj.id];
