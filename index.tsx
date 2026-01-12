@@ -105,7 +105,6 @@ const App = () => {
     const isAccumulated = activeMonth === 'accumulated';
     const mIdx = isAccumulated ? 11 : parseInt(activeMonth);
 
-    // FIX: Define activeManager based on the current view to resolve errors in the UI
     const activeManager = useMemo(() => MANAGERS.find(m => m.id === view), [view]);
 
     const initializeDefault = () => {
@@ -207,7 +206,6 @@ const App = () => {
 
     const calculateAnualAvg = (mId, oId) => {
         if (!comp || !data || !comp[mId]) return 0;
-        // Prioridad: Cálculo dinámico basado en completions validados estrictamente true
         const validatedMonths = Object.keys(comp[mId] || {}).filter(m => comp[mId][m] === true);
         if (validatedMonths.length === 0) return 0;
         
@@ -248,13 +246,11 @@ const App = () => {
             MANAGERS.forEach(m => {
                 let val = 0;
                 if (isAccumulated) {
-                    // Sin bloqueos por mes 11, directo al promedio de meses cerrados
                     val = calculateAnualAvg(m.id, o.id);
                 } else {
                     const isClosed = comp[m.id] && comp[m.id][String(mIdx)] === true;
                     val = isClosed ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
-                // Seguridad: Number() || 0 para evitar fallos de renderizado
                 point[m.id] = Number(val) || 0;
             });
             return point;
@@ -277,7 +273,7 @@ const App = () => {
     if (!data) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
             <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
-            <p className="uppercase tracking-widest text-xs">Sincronizando Dashboard...</p>
+            <p className="uppercase tracking-widest text-xs">Cargando Dashboard...</p>
         </div>
     );
 
@@ -305,15 +301,17 @@ const App = () => {
                         </button>
                         {monthMenuOpen && (
                             <div className="dropdown-menu w-72">
-                                {MONTHS.map((m, idx) => (
-                                    <button key={idx} onClick={() => { setActiveMonth(idx.toString()); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 ${activeMonth === idx.toString() ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}>
-                                        {m}
+                                <div className="max-h-80 overflow-y-auto custom-scrollbar p-1">
+                                    {MONTHS.map((m, idx) => (
+                                        <button key={idx} onClick={() => { setActiveMonth(idx.toString()); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 ${activeMonth === idx.toString() ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                                            {m}
+                                        </button>
+                                    ))}
+                                    <div className="border-t my-2"></div>
+                                    <button onClick={() => { setActiveMonth('accumulated'); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase rounded-xl ${isAccumulated ? 'bg-emerald-600 text-white' : 'text-emerald-600 hover:bg-emerald-50'}`}>
+                                        ✓ Año Acumulado
                                     </button>
-                                ))}
-                                <div className="border-t my-2"></div>
-                                <button onClick={() => { setActiveMonth('accumulated'); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase rounded-xl ${isAccumulated ? 'bg-emerald-600 text-white' : 'text-emerald-600 hover:bg-emerald-50'}`}>
-                                    ✓ Año Acumulado
-                                </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -328,24 +326,26 @@ const App = () => {
                         </button>
                         {managerMenuOpen && (
                             <div className="dropdown-menu w-80">
-                                <button onClick={() => { setView('comparison'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl mb-1 flex items-center gap-3 ${view === 'comparison' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-                                    <i className="fas fa-globe-americas"></i> Comparativa Global
-                                </button>
-                                <div className="border-t my-2"></div>
-                                {MANAGERS.map(m => (
-                                    <button key={m.id} onClick={() => { setView(m.id); setManagerMenuOpen(false); }} className={`w-full text-left px-3 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 flex items-center gap-4 ${view === m.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-                                        <span className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-[9px] font-black text-slate-700">{m.avatar}</span>
-                                        <span className="truncate">{m.name}</span>
+                                <div className="max-h-96 overflow-y-auto custom-scrollbar p-1">
+                                    <button onClick={() => { setView('comparison'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl mb-1 flex items-center gap-3 ${view === 'comparison' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                                        <i className="fas fa-globe-americas"></i> Comparativa Global
                                     </button>
-                                ))}
-                                {editorRole && (
-                                    <>
-                                        <div className="border-t my-2"></div>
-                                        <button onClick={() => { setView('editor'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl ${view === 'editor' ? 'bg-amber-500 text-white' : 'text-amber-600 hover:bg-amber-50'}`}>
-                                            <i className="fas fa-edit mr-2"></i> Editor
+                                    <div className="border-t my-2"></div>
+                                    {MANAGERS.map(m => (
+                                        <button key={m.id} onClick={() => { setView(m.id); setManagerMenuOpen(false); }} className={`w-full text-left px-3 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 flex items-center gap-4 ${view === m.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+                                            <span className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-[9px] font-black text-slate-700">{m.avatar}</span>
+                                            <span className="truncate">{m.name}</span>
                                         </button>
-                                    </>
-                                )}
+                                    ))}
+                                    {editorRole && (
+                                        <>
+                                            <div className="border-t my-2"></div>
+                                            <button onClick={() => { setView('editor'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl ${view === 'editor' ? 'bg-amber-500 text-white' : 'text-amber-600 hover:bg-amber-50'}`}>
+                                                <i className="fas fa-edit mr-2"></i> Editor
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -374,9 +374,9 @@ const App = () => {
                             <div className="lg:col-span-8 space-y-8 flex flex-col">
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Rendimiento Estratégico</h3>
-                                    {/* PRIORIDAD: Altura fija y ResponsiveContainer envuelto */}
-                                    <div style={{ width: '100%', height: '450px' }}>
-                                        <ResponsiveContainer width="100%" height="100%">
+                                    <div className="radar-container">
+                                        {/* Fix: changed width="0.99" to width="99%" to match the required type number | `${number}%` */}
+                                        <ResponsiveContainer width="99%" height="100%">
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                                 <PolarGrid stroke="#e2e8f0" />
                                                 <PolarAngleAxis dataKey="subject" tick={{fontSize: 10, fontWeight: 900, fill: '#64748b'}} />
@@ -391,8 +391,9 @@ const App = () => {
                                 </div>
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Evolución</h3>
-                                    <div style={{ width: '100%', height: '350px' }}>
-                                        <ResponsiveContainer width="100%" height="100%">
+                                    <div className="trend-container">
+                                        {/* Fix: changed width="0.99" to width="99%" to match the required type number | `${number}%` */}
+                                        <ResponsiveContainer width="99%" height="100%">
                                             <LineChart data={trendData} margin={{ top: 5, right: 30, left: -10, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} dy={10} />
@@ -432,7 +433,7 @@ const App = () => {
                 )}
 
                 {view === 'editor' && editorRole && (
-                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
                         {MANAGERS.filter(m => editorFilter === 'all' || editorFilter === m.id).map(m => (
                             <div key={m.id} className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
                                 <div className="flex justify-between items-center border-b pb-6">
@@ -457,13 +458,12 @@ const App = () => {
                                                     <h4 className="text-[11px] font-black uppercase text-slate-700">{obj.name}</h4>
                                                     <span className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-white border" style={{ color: getHeatColor(achVal) }}>{achVal}%</span>
                                                 </div>
-                                                {/* Controles simplificados para demo */}
                                                 {!obj.sub ? (
                                                     <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : oData.v} onChange={e => {
                                                         const newData = {...data};
                                                         newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
                                                         handleUpdate(newData, comp);
-                                                    }} className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 text-center text-2xl font-black outline-none" />
+                                                    }} className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 text-center text-2xl font-black outline-none shadow-sm focus:border-indigo-500 transition-colors" />
                                                 ) : (
                                                     <div className="space-y-3">
                                                         {obj.sub.map(s => (
@@ -488,7 +488,7 @@ const App = () => {
                 )}
 
                 {activeManager && (
-                    <div className="w-full max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 pb-20">
+                    <div className="w-full max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 pb-20 animate-fade-in">
                         {OBJECTIVES.map(obj => {
                             if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                             const ach = isAccumulated ? calculateAnualAvg(view, obj.id) : getObjectiveAchievement(view, obj.id, mIdx);
