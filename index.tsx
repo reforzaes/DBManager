@@ -137,7 +137,6 @@ const App = () => {
             setIsSyncing(true);
             setApiError(null);
             try {
-                // Forzamos que la ruta sea relativa al directorio actual
                 const res = await fetch(API_URL + "?t=" + Date.now());
                 if (!res.ok) throw new Error(`HTTP ${res.status}: No se encontró api.php`);
                 
@@ -186,7 +185,7 @@ const App = () => {
     };
 
     const handleUpdate = (newData, newComp) => {
-        if (isAccumulated) return; // Bloqueo total si es acumulado
+        if (isAccumulated) return;
         setData({...newData});
         setComp({...newComp});
         saveToDb(newData, newComp);
@@ -255,28 +254,30 @@ const App = () => {
     const activeManager = view !== 'comparison' && view !== 'editor' ? MANAGERS.find(m => m.id === view) : null;
 
     const radarData = useMemo(() => {
-        if (!data) return [];
+        if (!data || !comp) return [];
         return OBJECTIVES.map(o => {
             const point = { subject: o.name };
             MANAGERS.forEach(m => {
+                // Solo mostrar datos validados en el radar global
                 point[m.id] = isAccumulated 
                     ? calculateAnualAvg(m.id, o.id) 
-                    : getObjectiveAchievement(m.id, o.id, mIdx);
+                    : (comp[m.id][mIdx] ? getObjectiveAchievement(m.id, o.id, mIdx) : 0);
             });
             return point;
         });
-    }, [data, activeMonth]);
+    }, [data, activeMonth, comp]);
 
     const trendData = useMemo(() => {
-        if (!data) return [];
+        if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
             const monthPoint = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                monthPoint[m.id] = getMonthlyAch(m.id, i);
+                // Solo mostrar datos validados en la gráfica de tendencia
+                monthPoint[m.id] = comp[m.id][i] ? getMonthlyAch(m.id, i) : 0;
             });
             return monthPoint;
         });
-    }, [data]);
+    }, [data, comp]);
 
     if (!data) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
@@ -481,7 +482,7 @@ const App = () => {
                             <div className="lg:col-span-4 bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl flex flex-col">
                                 <div className="text-center mb-8">
                                     <h4 className="text-[10px] font-black uppercase opacity-40 tracking-widest mb-2">Ranking Global</h4>
-                                    <p className="text-xs font-bold text-indigo-400 uppercase">EFICIENCIA POR MANAGER</p>
+                                    <p className="text-xs font-bold text-indigo-400 uppercase">EFICIENCIA POR MANAGER (VALidados)</p>
                                 </div>
                                 <div className="space-y-3 overflow-y-auto custom-scrollbar flex-grow pr-1">
                                     {MANAGERS.sort((a,b) => globalAvg(b.id) - globalAvg(a.id)).map((m, rank) => {
@@ -662,7 +663,7 @@ const App = () => {
                                                                                             <span className="text-[10px] font-bold text-slate-500 uppercase">{s.name}</span>
                                                                                         </div>
                                                                                         {sData.e && (
-                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(subAch) }}>
+                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(isAccumulated ? 0 : subAch) }}>
                                                                                                 {isAccumulated ? 'Promedio' : subAch + '%'}
                                                                                             </span>
                                                                                         )}
