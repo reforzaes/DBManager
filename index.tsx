@@ -192,7 +192,7 @@ const App = () => {
     };
 
     const getObjectiveAchievement = (mId, oId, monthIndex) => {
-        if (!data) return 0;
+        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][monthIndex]) return 0;
         const objData = data[mId][oId][monthIndex];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
         if (!objMeta || !objData.e) return 0;
@@ -208,24 +208,32 @@ const App = () => {
     };
 
     const calculateAnualAvg = (mId, oId) => {
-        if (!comp || !data) return 0;
-        const validated = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx]);
+        if (!comp || !data || !comp[mId]) return 0;
+        // Filtramos solo los meses que el manager tiene validados (cerrados)
+        const validated = MONTHS.map((_, i) => i).filter(idx => comp[mId][idx] === true);
         if (validated.length === 0) return 0;
-        const sum = validated.reduce((acc, i) => acc + getObjectiveAchievement(mId, oId, i), 0);
+        
+        const sum = validated.reduce((acc, i) => {
+            const val = getObjectiveAchievement(mId, oId, i);
+            return acc + (isNaN(val) ? 0 : val);
+        }, 0);
+        
         return Math.round(sum / validated.length);
     };
 
     const globalAvg = (mId) => {
-        if (!data) return 0;
+        if (!data || !comp || !comp[mId]) return 0;
         const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
-        return Math.round(activeScores.reduce((a, b) => a + b, 0) / OBJECTIVES.length);
+        if (activeScores.length === 0) return 0;
+        const sum = activeScores.reduce((a, b) => a + b, 0);
+        return Math.round(sum / OBJECTIVES.length);
     };
 
     const getMonthlyAch = (mId, monthIndex) => {
-        if (!data) return 0;
+        if (!data || !data[mId]) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
             const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
-            return isQuarterlyOk && data[mId][o.id][monthIndex].e;
+            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][monthIndex]?.e;
         });
         if (activeObjs.length === 0) return 0;
         const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
@@ -256,24 +264,32 @@ const App = () => {
     const radarData = useMemo(() => {
         if (!data || !comp) return [];
         return OBJECTIVES.map(o => {
-            const point = { subject: o.name };
+            const point: any = { subject: o.name };
             MANAGERS.forEach(m => {
-                // Solo mostrar datos validados en el radar global
-                point[m.id] = isAccumulated 
-                    ? calculateAnualAvg(m.id, o.id) 
-                    : (comp[m.id][mIdx] ? getObjectiveAchievement(m.id, o.id, mIdx) : 0);
+                let val = 0;
+                if (isAccumulated) {
+                    // En acumulado siempre calculamos el promedio de lo cerrado, sin importar mIdx
+                    val = calculateAnualAvg(m.id, o.id);
+                } else {
+                    // Solo mostramos si el mes seleccionado está cerrado
+                    const isClosed = comp[m.id] && comp[m.id][mIdx] === true;
+                    val = isClosed ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
+                }
+                point[m.id] = isNaN(val) ? 0 : val;
             });
             return point;
         });
-    }, [data, activeMonth, comp]);
+    }, [data, activeMonth, comp, isAccumulated, mIdx]);
 
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
-            const monthPoint = { name: mName.substring(0, 3) };
+            const monthPoint: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                // Solo mostrar datos validados en la gráfica de tendencia
-                monthPoint[m.id] = comp[m.id][i] ? getMonthlyAch(m.id, i) : 0;
+                // Solo mostrar meses validados en la tendencia para evitar caídas a cero erróneas
+                const isClosed = comp[m.id] && comp[m.id][i] === true;
+                const val = isClosed ? getMonthlyAch(m.id, i) : null; 
+                monthPoint[m.id] = val;
             });
             return monthPoint;
         });
@@ -471,6 +487,7 @@ const App = () => {
                                                         dot={false} 
                                                         activeDot={{ r: 5, strokeWidth: 0 }} 
                                                         name={m.name}
+                                                        connectNulls={true}
                                                     />
                                                 ))}
                                             </LineChart>
@@ -648,7 +665,7 @@ const App = () => {
                                                                     <div className="grid grid-cols-1 gap-3">
                                                                         {obj.sub.map(s => {
                                                                             const sData = oData.s[s.id];
-                                                                            const subAch = isAccumulated ? 0 : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                                            const subAch = isAccumulated ? calculateAnualAvg(m.id, s.id) : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                                             return (
                                                                                 <div key={s.id} className={`bg-white p-4 rounded-2xl border transition-all ${sData.e ? 'border-slate-100 shadow-sm' : 'border-dashed border-slate-200 opacity-40'}`}>
                                                                                     <div className="flex justify-between items-center mb-3">
@@ -663,8 +680,8 @@ const App = () => {
                                                                                             <span className="text-[10px] font-bold text-slate-500 uppercase">{s.name}</span>
                                                                                         </div>
                                                                                         {sData.e && (
-                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(isAccumulated ? 0 : subAch) }}>
-                                                                                                {isAccumulated ? 'Promedio' : subAch + '%'}
+                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(subAch) }}>
+                                                                                                {subAch + '%'}
                                                                                             </span>
                                                                                         )}
                                                                                     </div>
@@ -725,7 +742,7 @@ const App = () => {
                                 {OBJECTIVES.map(obj => {
                                     if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                                     const oData = data[view][obj.id][mIdx];
-                                    if (!oData.e) return null;
+                                    if (!oData || !oData.e) return null;
 
                                     const ach = isAccumulated ? calculateAnualAvg(view, obj.id) : getObjectiveAchievement(view, obj.id, mIdx);
                                     const rule = OBJECTIVE_RULES[obj.id];
@@ -763,7 +780,7 @@ const App = () => {
                                                     {obj.sub.map(s => {
                                                         const sData = oData.s[s.id];
                                                         if (!sData.e) return null;
-                                                        const sAch = isAccumulated ? '---' : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                        const sAch = isAccumulated ? calculateAnualAvg(view, s.id) : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                         const sRule = OBJECTIVE_RULES[s.id];
                                                         const sDefTarget = sRule ? (typeof sRule.target === 'function' ? sRule.target(mIdx) : sRule.target) : 100;
                                                         const sCurTarget = (sData.t !== null && sData.t !== undefined) ? sData.t : sDefTarget;
@@ -777,14 +794,14 @@ const App = () => {
                                                                     </span>
                                                                     <span className="text-sm font-black tabular-nums" style={{ color: sColor }}>{sAch}{typeof sAch === 'number' ? '%' : ''}</span>
                                                                 </div>
-                                                                {!isAccumulated && (
-                                                                    <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
-                                                                        <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
-                                                                            {Number(sAch) > 20 && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
-                                                                        </div>
-                                                                        {Number(sAch) <= 20 && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
+                                                                <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
+                                                                    <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
+                                                                        {Number(sAch) > 20 && !isAccumulated && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
+                                                                        {Number(sAch) > 20 && isAccumulated && <span className="text-xs font-black text-white bar-label-shadow">{sAch}%</span>}
                                                                     </div>
-                                                                )}
+                                                                    {Number(sAch) <= 20 && !isAccumulated && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
+                                                                    {Number(sAch) <= 20 && isAccumulated && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sAch}%</span>}
+                                                                </div>
                                                             </div>
                                                         );
                                                     })}
