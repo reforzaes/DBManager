@@ -5,7 +5,7 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 
-// Aseguramos que apunte al archivo en la misma carpeta
+// Usamos una ruta relativa simple para que funcione con el base /dbmanager/
 const API_URL = "api.php";
 const SPECIAL_NAME = 'Objetivos de equipo';
 const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
@@ -135,16 +135,11 @@ const App = () => {
             setApiError(null);
             try {
                 const res = await fetch(API_URL);
-                
-                if (!res.ok) {
-                    throw new Error(`Error ${res.status}: No se encontró api.php`);
-                }
-
+                if (!res.ok) throw new Error(`Error de conexión: ${res.status} al buscar api.php`);
                 const contentType = res.headers.get("content-type");
                 if (!contentType || !contentType.includes("application/json")) {
-                    throw new Error("El servidor no devolvió JSON. Revisa la ruta de api.php.");
+                    throw new Error("El servidor no devolvió JSON. Posible error de ruta de api.php (está recibiendo HTML o error 404).");
                 }
-
                 const json = await res.json();
                 if (json && json.data) {
                     setData(json.data);
@@ -178,14 +173,14 @@ const App = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ data: newData, completions: newComp })
             });
-            if (!res.ok) throw new Error("Fallo al guardar");
+            if (!res.ok) throw new Error("Fallo al guardar cambios");
         } catch (e) { 
             console.error("Save Error:", e);
-            setApiError("Error al guardar datos.");
         } finally { setIsSyncing(false); }
     };
 
     const handleUpdate = (newData, newComp) => {
+        if (isAccumulated) return; // Protección contra edición en modo acumulado
         setData({...newData});
         setComp({...newComp});
         saveToDb(newData, newComp);
@@ -281,22 +276,20 @@ const App = () => {
     }, [data]);
 
     if (!data) return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-400">
-            <div className="text-center">
-                <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
-                <p className="uppercase tracking-widest text-xs">Cargando base de datos...</p>
-                {apiError && <p className="mt-4 text-red-500 text-[10px]">{apiError}</p>}
-            </div>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
+            <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
+            <p className="uppercase tracking-widest text-xs">Cargando Dashboard...</p>
+            {apiError && <p className="mt-4 text-red-500 text-[10px] font-bold max-w-xs text-center">{apiError}</p>}
         </div>
     );
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             {apiError && (
-                <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 text-center sticky top-0 z-[2000] flex items-center justify-center gap-4">
-                    <i className="fas fa-exclamation-circle"></i>
-                    {apiError}
-                    <button onClick={() => window.location.reload()} className="bg-white text-red-600 px-3 py-1 rounded-full text-[8px]">REINTENTAR</button>
+                <div className="bg-red-600 text-white text-[10px] font-black uppercase py-2 px-4 text-center sticky top-0 z-[2000] flex items-center justify-center gap-4 shadow-lg">
+                    <i className="fas fa-exclamation-circle text-lg"></i>
+                    API Error: {apiError}
+                    <button onClick={() => window.location.reload()} className="bg-white text-red-600 px-4 py-1 rounded-full text-[10px] font-black hover:bg-slate-100 transition-colors">RECARGAR</button>
                 </div>
             )}
             
@@ -305,7 +298,7 @@ const App = () => {
                     <div className="bg-slate-900 text-white w-12 h-12 rounded-[1rem] flex items-center justify-center shadow-lg">
                         <i className="fas fa-layer-group text-xl"></i>
                     </div>
-                    <div className="hidden sm:block">
+                    <div className="hidden sm:block text-left">
                         <h1 className="text-lg font-black uppercase tracking-tighter text-slate-900 leading-none">KPI Dashboard Javier</h1>
                         <p className="text-[10px] font-black text-slate-400 uppercase mt-1 tracking-widest">ESTRATÉGICOS</p>
                     </div>
@@ -420,21 +413,21 @@ const App = () => {
                 </div>
             </header>
 
-            <main className="w-full flex-grow flex flex-col py-8 px-0 sm:px-6">
+            <main className="w-full flex-grow flex flex-col py-8 px-4 sm:px-6">
                 {view === 'comparison' && (
-                    <div className="w-full space-y-12 animate-fade-in px-4 lg:px-0">
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-full">
+                    <div className="w-full space-y-12 animate-fade-in max-w-7xl mx-auto">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
                             <div className="lg:col-span-8 space-y-8 flex flex-col">
-                                <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm flex flex-col">
-                                    <div className="flex justify-between items-center mb-10">
-                                        <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-800">Rendimiento Estratégico</h3>
-                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-5 py-2.5 rounded-full border tracking-widest">HABILIDADES GLOBALES</span>
+                                <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800">Rendimiento Estratégico</h3>
+                                        <span className="hidden sm:inline-block text-[10px] font-black text-slate-400 bg-slate-50 px-4 py-2 rounded-full border tracking-widest">HABILIDADES GLOBALES</span>
                                     </div>
-                                    <div className="radar-container flex-grow">
+                                    <div className="radar-container">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                                 <PolarGrid stroke="#e2e8f0" />
-                                                <PolarAngleAxis dataKey="subject" tick={{fontSize: 11, fontWeight: 900, fill: '#64748b'}} />
+                                                <PolarAngleAxis dataKey="subject" tick={{fontSize: 10, fontWeight: 900, fill: '#64748b'}} />
                                                 {MANAGERS.map(m => (
                                                     <Radar 
                                                         key={m.id}
@@ -442,37 +435,37 @@ const App = () => {
                                                         dataKey={m.id} 
                                                         stroke={m.color} 
                                                         fill={m.color} 
-                                                        fillOpacity={0.03} 
+                                                        fillOpacity={0.05} 
                                                         strokeWidth={2} 
                                                     />
                                                 ))}
-                                                <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', fontSize: '12px', fontWeight: '900', padding: '15px' }} />
-                                                <Legend wrapperStyle={{ paddingTop: '40px', fontSize: '10px', fontWeight: '900' }} iconType="circle" />
+                                                <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: '900' }} />
+                                                <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '9px', fontWeight: '900' }} iconType="circle" />
                                             </RadarChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
-                                <div className="bg-white p-8 md:p-12 rounded-[3.5rem] border shadow-sm flex flex-col h-[450px]">
-                                    <div className="flex justify-between items-center mb-10">
-                                        <h3 className="text-2xl font-black uppercase tracking-tighter text-slate-800">Evolución de Eficiencia</h3>
-                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-5 py-2.5 rounded-full border tracking-widest">TENDENCIA MENSUAL</span>
+                                <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800">Evolución</h3>
+                                        <span className="hidden sm:inline-block text-[10px] font-black text-slate-400 bg-slate-50 px-4 py-2 rounded-full border tracking-widest">TENDENCIA ANUAL</span>
                                     </div>
-                                    <div className="flex-grow">
+                                    <div className="trend-container">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={trendData} margin={{ top: 5, right: 30, left: -20, bottom: 5 }}>
+                                            <LineChart data={trendData} margin={{ top: 5, right: 30, left: -10, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 800, fill: '#94a3b8'}} dy={10} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 800, fill: '#94a3b8'}} dx={-5} domain={[0, 100]} />
-                                                <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', fontSize: '11px', fontWeight: '800' }} />
+                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} dy={10} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} dx={-5} domain={[0, 100]} />
+                                                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 20px rgba(0,0,0,0.05)', fontSize: '10px', fontWeight: '800' }} />
                                                 {MANAGERS.map(m => (
                                                     <Line 
                                                         key={m.id} 
                                                         type="monotone" 
                                                         dataKey={m.id} 
                                                         stroke={m.color} 
-                                                        strokeWidth={3} 
-                                                        dot={{ r: 4, strokeWidth: 2, fill: 'white' }} 
-                                                        activeDot={{ r: 6, strokeWidth: 0 }} 
+                                                        strokeWidth={2.5} 
+                                                        dot={false} 
+                                                        activeDot={{ r: 5, strokeWidth: 0 }} 
                                                         name={m.name}
                                                     />
                                                 ))}
@@ -482,28 +475,28 @@ const App = () => {
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-4 bg-slate-900 text-white p-10 rounded-[3.5rem] shadow-2xl flex flex-col h-full min-h-[900px]">
-                                <div className="text-center mb-10">
-                                    <h4 className="text-[11px] font-black uppercase opacity-40 tracking-widest mb-2">Eficiencia Anual</h4>
-                                    <p className="text-xs font-bold text-indigo-400">POSICIONES ACTUALES</p>
+                            <div className="lg:col-span-4 bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl flex flex-col">
+                                <div className="text-center mb-8">
+                                    <h4 className="text-[10px] font-black uppercase opacity-40 tracking-widest mb-2">Ranking Global</h4>
+                                    <p className="text-xs font-bold text-indigo-400 uppercase">EFICIENCIA POR MANAGER</p>
                                 </div>
-                                <div className="space-y-4 overflow-y-auto custom-scrollbar flex-grow pr-2">
+                                <div className="space-y-3 overflow-y-auto custom-scrollbar flex-grow pr-1">
                                     {MANAGERS.sort((a,b) => globalAvg(b.id) - globalAvg(a.id)).map((m, rank) => {
                                         const score = globalAvg(m.id);
                                         return (
-                                            <div key={m.id} onClick={() => setView(m.id)} className="group flex items-center justify-between bg-white/5 p-5 rounded-[2rem] border border-white/10 hover:bg-white/10 transition-all cursor-pointer">
-                                                <div className="flex items-center gap-5">
-                                                    <div className="text-xs font-black opacity-20 w-5">{rank + 1}</div>
-                                                    <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-[10px] font-black group-hover:scale-110 transition-transform" style={{ borderLeft: `4px solid ${m.color}` }}>{m.avatar}</div>
+                                            <div key={m.id} onClick={() => setView(m.id)} className="group flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-all cursor-pointer">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="text-[10px] font-black opacity-20 w-4">{rank + 1}</div>
+                                                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[9px] font-black" style={{ borderLeft: `3px solid ${m.color}` }}>{m.avatar}</div>
                                                     <div>
-                                                        <p className="text-[11px] font-bold uppercase tracking-tight truncate max-w-[120px]">{m.name}</p>
-                                                        <div className="h-1.5 bg-white/10 w-28 rounded-full mt-2 overflow-hidden">
+                                                        <p className="text-[10px] font-bold uppercase tracking-tight truncate w-24">{m.name}</p>
+                                                        <div className="h-1 bg-white/10 w-20 rounded-full mt-1.5 overflow-hidden">
                                                             <div className="h-full rounded-full" style={{ width: `${score}%`, backgroundColor: m.color }}></div>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-2xl font-black tabular-nums" style={{ color: getHeatColor(score) }}>{score}%</p>
+                                                    <p className="text-xl font-black tabular-nums" style={{ color: getHeatColor(score) }}>{score}%</p>
                                                 </div>
                                             </div>
                                         );
@@ -514,25 +507,40 @@ const App = () => {
                     </div>
                 )}
 
-                <div className="w-full mt-6 px-4">
+                <div className="w-full max-w-7xl mx-auto">
                     {view === 'editor' && editorRole ? (
                         <div className="animate-fade-in space-y-10 pb-20">
+                            {isAccumulated && (
+                                <div className="bg-amber-100 border-2 border-amber-200 p-8 rounded-[3rem] text-center shadow-md max-w-4xl mx-auto flex flex-col items-center gap-4">
+                                    <div className="w-12 h-12 bg-amber-200 rounded-full flex items-center justify-center text-amber-600">
+                                        <i className="fas fa-lock text-xl"></i>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black uppercase text-amber-900 tracking-widest">Editor en Modo Lectura</h4>
+                                        <p className="text-[11px] font-bold text-amber-800/70 mt-2 uppercase max-w-md">
+                                            El acumulado es un cálculo total de los meses cerrados. 
+                                            Para editar, seleccione un mes específico en el calendario.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex flex-col items-center gap-6">
-                                <h2 className="text-xs font-black uppercase text-slate-400 tracking-[0.4em]">Filtrar Manager para Editar</h2>
-                                <div className="flex flex-wrap justify-center gap-2 max-w-5xl">
+                                <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.4em]">Configurar Managers</h2>
+                                <div className="flex flex-wrap justify-center gap-2">
                                     <button 
                                         onClick={() => setEditorFilter('all')}
-                                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all ${editorFilter === 'all' ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-white text-slate-500 hover:bg-slate-50 border-slate-200'}`}
+                                        className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all ${editorFilter === 'all' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-slate-50 border-slate-200'}`}
                                     >
-                                        Ver Todos
+                                        Todos
                                     </button>
                                     {MANAGERS.map(m => (
                                         <button 
                                             key={m.id}
                                             onClick={() => setEditorFilter(m.id)}
-                                            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all flex items-center gap-2 ${editorFilter === m.id ? 'bg-indigo-600 text-white shadow-xl scale-105 border-indigo-500' : 'bg-white text-slate-500 hover:bg-slate-50 border-slate-200'}`}
+                                            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all flex items-center gap-2 ${editorFilter === m.id ? 'bg-indigo-600 text-white shadow-lg border-indigo-500' : 'bg-white text-slate-500 hover:bg-slate-50 border-slate-200'}`}
                                         >
-                                            <span className="opacity-40">{m.avatar}</span> {m.name}
+                                            <span className="opacity-30">{m.avatar}</span> {m.name.split(' ')[0]}
                                         </button>
                                     ))}
                                 </div>
@@ -540,131 +548,148 @@ const App = () => {
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 {MANAGERS.filter(m => editorFilter === 'all' || editorFilter === m.id).map(m => (
-                                    <div key={m.id} className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
+                                    <div key={m.id} className={`bg-white p-8 rounded-[3rem] border shadow-sm space-y-6 transition-opacity ${isAccumulated ? 'opacity-75' : ''}`}>
                                         <div className="flex justify-between items-center border-b pb-6">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-sm font-black">{m.avatar}</div>
                                                 <div>
-                                                    <h3 className="text-xl font-black uppercase text-slate-800 tracking-tighter">{m.name}</h3>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{editorRole === 'super' ? 'SUPER CONFIGURACIÓN' : 'VALORES REALES'}</p>
+                                                    <h3 className="text-lg font-black uppercase text-slate-800 tracking-tighter">{m.name}</h3>
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                                        {isAccumulated ? 'TOTAL ANUAL' : (editorRole === 'super' ? 'SUPER CONFIG' : 'VALORES MES')}
+                                                    </p>
                                                 </div>
                                             </div>
-                                            <button onClick={() => handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [mIdx]: !comp[m.id][mIdx]}})} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 transition-all ${comp[m.id][mIdx] ? 'bg-emerald-500 text-white border-emerald-400 shadow-md' : 'bg-slate-50 text-slate-400'}`}>
-                                                {comp[m.id][mIdx] ? '✓ Validado' : 'Validar'}
-                                            </button>
+                                            {!isAccumulated && (
+                                                <button 
+                                                    onClick={() => handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [mIdx]: !comp[m.id][mIdx]}})} 
+                                                    className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 transition-all ${comp[m.id][mIdx] ? 'bg-emerald-500 text-white border-emerald-400 shadow-md' : 'bg-slate-50 text-slate-400'}`}
+                                                >
+                                                    {comp[m.id][mIdx] ? '✓ Validado' : 'Validar'}
+                                                </button>
+                                            )}
                                         </div>
-                                        <div className="space-y-8">
+                                        <div className="space-y-6">
                                             {OBJECTIVES.map(obj => {
                                                 if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                                                 const oData = data[m.id][obj.id][mIdx];
                                                 
                                                 return (
-                                                    <div key={obj.id} className={`p-6 rounded-[2.5rem] border transition-all ${oData.e ? 'bg-slate-50 border-slate-100' : 'bg-slate-100 border-dashed border-slate-300 opacity-60'}`}>
+                                                    <div key={obj.id} className={`p-6 rounded-[2rem] border transition-all ${oData.e ? 'bg-slate-50 border-slate-100' : 'bg-slate-100 border-dashed border-slate-200 opacity-60'}`}>
                                                         <div className="flex justify-between items-center mb-6">
                                                             <div className="flex items-center gap-4">
-                                                                {editorRole === 'super' && (
-                                                                    <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                                                {editorRole === 'super' && !isAccumulated && (
+                                                                    <div className="relative inline-block w-8 mr-2 align-middle select-none transition duration-200 ease-in">
                                                                         <input type="checkbox" checked={oData.e} onChange={e => {
                                                                             const newData = {...data};
                                                                             newData[m.id][obj.id][mIdx].e = e.target.checked;
                                                                             handleUpdate(newData, comp);
-                                                                        }} className="switch-input absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer z-10" style={{top: '1px'}} />
-                                                                        <label className="switch-label block overflow-hidden h-7 rounded-full bg-gray-300 cursor-pointer"></label>
+                                                                        }} className="switch-input absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer z-10" style={{top: '1px'}} />
+                                                                        <label className="switch-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
                                                                     </div>
                                                                 )}
-                                                                <h4 className="text-xs font-black uppercase text-slate-700">
+                                                                <h4 className="text-[11px] font-black uppercase text-slate-700">
                                                                     {obj.sub ? obj.name : getDynamicLabel(obj.id, oData.t || (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))}
                                                                 </h4>
                                                             </div>
-                                                            {oData.e && <span className="text-xs font-black px-4 py-2 rounded-xl bg-white border shadow-sm" style={{ color: getHeatColor(getObjectiveAchievement(m.id, obj.id, mIdx)) }}>{getObjectiveAchievement(m.id, obj.id, mIdx)}%</span>}
+                                                            {oData.e && (
+                                                                <span className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-white border shadow-sm" style={{ color: getHeatColor(isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx)) }}>
+                                                                    {isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx)}%
+                                                                </span>
+                                                            )}
                                                         </div>
 
                                                         {oData.e && (
-                                                            <div className="space-y-6">
+                                                            <div className="space-y-4">
                                                                 {!obj.sub ? (
-                                                                    <div className={`grid grid-cols-1 ${editorRole === 'super' ? 'sm:grid-cols-3' : ''} gap-4`}>
+                                                                    <div className={`grid grid-cols-1 ${(editorRole === 'super' && !isAccumulated) ? 'sm:grid-cols-3' : ''} gap-3`}>
                                                                         <div>
-                                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-2 text-center">Valor Real</label>
-                                                                            <input type="number" step="any" value={oData.v} onChange={e => {
-                                                                                const newData = {...data};
-                                                                                newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
-                                                                                handleUpdate(newData, comp);
-                                                                            }} className="w-full bg-white border-2 border-slate-200 rounded-2xl py-4 text-center text-3xl font-black focus:border-indigo-500 outline-none shadow-sm" />
+                                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-1 text-center">Valor Real</label>
+                                                                            <input 
+                                                                                disabled={isAccumulated} 
+                                                                                type="number" 
+                                                                                step="any" 
+                                                                                value={isAccumulated ? '' : oData.v} 
+                                                                                placeholder={isAccumulated ? 'Calculado' : '0.0'}
+                                                                                onChange={e => {
+                                                                                    const newData = {...data};
+                                                                                    newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
+                                                                                    handleUpdate(newData, comp);
+                                                                                }} 
+                                                                                className={`w-full bg-white border-2 border-slate-200 rounded-xl py-3 text-center text-2xl font-black focus:border-indigo-500 outline-none shadow-sm ${isAccumulated ? 'opacity-40 cursor-not-allowed bg-slate-100' : ''}`} 
+                                                                            />
                                                                         </div>
-                                                                        {editorRole === 'super' && (
+                                                                        {editorRole === 'super' && !isAccumulated && (
                                                                             <>
                                                                             <div>
-                                                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-2 text-center">Min (0%)</label>
-                                                                                <input type="number" step="any" value={oData.b === null ? '' : oData.b} placeholder={`Def: ${typeof OBJECTIVE_RULES[obj.id].base === 'function' ? OBJECTIVE_RULES[obj.id].base(mIdx) : OBJECTIVE_RULES[obj.id].base}`} onChange={e => {
+                                                                                <label className="text-[8px] font-black text-emerald-400 uppercase tracking-widest block mb-1 text-center">Mínimo</label>
+                                                                                <input type="number" step="any" value={oData.b === null ? '' : oData.b} placeholder="Auto" onChange={e => {
                                                                                     const newData = {...data};
                                                                                     newData[m.id][obj.id][mIdx].b = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                                     handleUpdate(newData, comp);
-                                                                                }} className="w-full bg-white border-2 border-dashed border-emerald-300 rounded-2xl py-4 text-center text-2xl font-black focus:border-emerald-500 outline-none text-emerald-600 placeholder:text-emerald-200" />
+                                                                                }} className="w-full bg-white border-2 border-emerald-100 rounded-xl py-3 text-center text-xl font-black text-emerald-600 focus:border-emerald-500 outline-none" />
                                                                             </div>
                                                                             <div>
-                                                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-2 text-center">Obj (100%)</label>
-                                                                                <input type="number" step="any" value={oData.t === null ? '' : oData.t} placeholder={`Def: ${typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target}`} onChange={e => {
+                                                                                <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest block mb-1 text-center">Objetivo</label>
+                                                                                <input type="number" step="any" value={oData.t === null ? '' : oData.t} placeholder="Auto" onChange={e => {
                                                                                     const newData = {...data};
                                                                                     newData[m.id][obj.id][mIdx].t = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                                     handleUpdate(newData, comp);
-                                                                                }} className="w-full bg-white border-2 border-dashed border-indigo-300 rounded-2xl py-4 text-center text-2xl font-black focus:border-indigo-500 outline-none text-indigo-600 placeholder:text-indigo-200" />
+                                                                                }} className="w-full bg-white border-2 border-indigo-100 rounded-xl py-3 text-center text-xl font-black text-indigo-600 focus:border-indigo-500 outline-none" />
                                                                             </div>
                                                                             </>
                                                                         )}
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="grid grid-cols-1 gap-4">
+                                                                    <div className="grid grid-cols-1 gap-3">
                                                                         {obj.sub.map(s => {
                                                                             const sData = oData.s[s.id];
-                                                                            const sDefaultRule = OBJECTIVE_RULES[s.id];
-                                                                            const sDefaultBase = typeof sDefaultRule.base === 'function' ? sDefaultRule.base(mIdx) : sDefaultRule.base;
-                                                                            const sDefaultTarget = typeof sDefaultRule.target === 'function' ? sDefaultRule.target(mIdx) : sDefaultRule.target;
-                                                                            
+                                                                            const sDefRule = OBJECTIVE_RULES[s.id];
                                                                             return (
-                                                                                <div key={s.id} className={`bg-white p-5 rounded-3xl border-2 transition-all ${sData.e ? 'border-slate-100 shadow-sm' : 'border-dashed border-slate-200 opacity-40'}`}>
-                                                                                    <div className="flex justify-between items-center mb-4">
-                                                                                        <div className="flex items-center gap-3">
-                                                                                            {editorRole === 'super' && (
+                                                                                <div key={s.id} className={`bg-white p-4 rounded-2xl border transition-all ${sData.e ? 'border-slate-100 shadow-sm' : 'border-dashed border-slate-200 opacity-40'}`}>
+                                                                                    <div className="flex justify-between items-center mb-3">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            {editorRole === 'super' && !isAccumulated && (
                                                                                                 <input type="checkbox" checked={sData.e} onChange={e => {
                                                                                                     const newData = {...data};
                                                                                                     newData[m.id][obj.id][mIdx].s[s.id].e = e.target.checked;
                                                                                                     handleUpdate(newData, comp);
                                                                                                 }} className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300" />
                                                                                             )}
-                                                                                            <span className="text-[10px] font-black text-slate-600 uppercase">
-                                                                                                {getDynamicLabel(s.id, sData.t || sDefaultTarget)}
-                                                                                            </span>
+                                                                                            <span className="text-[10px] font-bold text-slate-500 uppercase">{s.name}</span>
                                                                                         </div>
-                                                                                        {sData.e && <span className="text-[10px] font-black" style={{ color: getHeatColor(calculateAch(s.id, sData.v, mIdx, sData.t, sData.b)) }}>{calculateAch(s.id, sData.v, mIdx, sData.t, sData.b)}%</span>}
+                                                                                        {sData.e && (
+                                                                                            <span className="text-[9px] font-black" style={{ color: getHeatColor(isAccumulated ? 0 : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b)) }}>
+                                                                                                {isAccumulated ? '---' : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b) + '%'}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                     {sData.e && (
-                                                                                        <div className={`grid grid-cols-1 ${editorRole === 'super' ? 'sm:grid-cols-3' : ''} gap-3`}>
-                                                                                            <div className="flex flex-col">
-                                                                                                <span className="text-[8px] font-black text-slate-400 uppercase mb-1 text-center">Valor Real</span>
-                                                                                                <input type="number" step="any" value={sData.v} onChange={e => {
+                                                                                        <div className={`grid grid-cols-1 ${(editorRole === 'super' && !isAccumulated) ? 'sm:grid-cols-3' : ''} gap-2`}>
+                                                                                            <input 
+                                                                                                disabled={isAccumulated} 
+                                                                                                type="number" 
+                                                                                                step="any" 
+                                                                                                value={isAccumulated ? '' : sData.v} 
+                                                                                                placeholder={isAccumulated ? 'Auto' : '0.0'}
+                                                                                                onChange={e => {
                                                                                                     const newData = {...data};
                                                                                                     newData[m.id][obj.id][mIdx].s[s.id].v = parseFloat(e.target.value) || 0;
                                                                                                     handleUpdate(newData, comp);
-                                                                                                }} className="bg-slate-50 rounded-xl py-3 text-center text-xl font-black outline-none border border-slate-100" />
-                                                                                            </div>
-                                                                                            {editorRole === 'super' && (
+                                                                                                }} 
+                                                                                                className={`bg-slate-50 rounded-lg py-2 text-center text-lg font-black outline-none border border-slate-200 ${isAccumulated ? 'opacity-40 bg-slate-100' : ''}`} 
+                                                                                            />
+                                                                                            {editorRole === 'super' && !isAccumulated && (
                                                                                                 <>
-                                                                                                <div className="flex flex-col">
-                                                                                                    <span className="text-[8px] font-black text-emerald-400 uppercase mb-1 text-center">Min (0%)</span>
-                                                                                                    <input type="number" step="any" value={sData.b === null ? '' : sData.b} placeholder={sDefaultBase} onChange={e => {
-                                                                                                        const newData = {...data};
-                                                                                                        newData[m.id][obj.id][mIdx].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                                                                        handleUpdate(newData, comp);
-                                                                                                    }} className="bg-emerald-50/50 text-emerald-600 placeholder:text-emerald-200 rounded-xl py-3 text-center text-xl font-black outline-none border border-emerald-100" />
-                                                                                                </div>
-                                                                                                <div className="flex flex-col">
-                                                                                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1 text-center">Obj (100%)</span>
-                                                                                                    <input type="number" step="any" value={sData.t === null ? '' : sData.t} placeholder={sDefaultTarget} onChange={e => {
-                                                                                                        const newData = {...data};
-                                                                                                        newData[m.id][obj.id][mIdx].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                                                                        handleUpdate(newData, comp);
-                                                                                                    }} className="bg-indigo-50/50 text-indigo-600 placeholder:text-indigo-200 rounded-xl py-3 text-center text-xl font-black outline-none border border-indigo-100" />
-                                                                                                </div>
+                                                                                                <input type="number" step="any" value={sData.b === null ? '' : sData.b} placeholder="Min" onChange={e => {
+                                                                                                    const newData = {...data};
+                                                                                                    newData[m.id][obj.id][mIdx].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                                                    handleUpdate(newData, comp);
+                                                                                                }} className="bg-emerald-50 text-emerald-700 rounded-lg py-2 text-center text-lg font-black outline-none border border-emerald-100" />
+                                                                                                <input type="number" step="any" value={sData.t === null ? '' : sData.t} placeholder="Obj" onChange={e => {
+                                                                                                    const newData = {...data};
+                                                                                                    newData[m.id][obj.id][mIdx].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                                                    handleUpdate(newData, comp);
+                                                                                                }} className="bg-indigo-50 text-indigo-700 rounded-lg py-2 text-center text-lg font-black outline-none border border-indigo-100" />
                                                                                                 </>
                                                                                             )}
                                                                                         </div>
@@ -685,7 +710,7 @@ const App = () => {
                             </div>
                         </div>
                     ) : activeManager ? (
-                        <div className="animate-fade-in space-y-12 pb-24">
+                        <div className="animate-fade-in space-y-12 pb-24 max-w-7xl mx-auto">
                             <div className="flex items-center gap-8 px-4">
                                 <div className="h-[2px] bg-slate-200 flex-grow"></div>
                                 <h3 className="text-xl font-black uppercase text-slate-400 tracking-[0.3em] whitespace-nowrap">KPI DETALLADOS: {activeManager.name}</h3>
@@ -717,13 +742,15 @@ const App = () => {
                                                 <div className="mb-6">
                                                     <div className="w-full bg-slate-100 rounded-2xl h-16 overflow-hidden shadow-inner relative border-[4px] border-white">
                                                         <div className="h-full heat-bar-transition rounded-r-2xl flex items-center justify-center shadow-lg" style={{ width: `${ach}%`, backgroundColor: color }}>
-                                                            {ach > 15 && <span className="text-2xl font-black text-white bar-label-shadow">{oData.v}{unit}</span>}
+                                                            {!isAccumulated && ach > 15 && <span className="text-2xl font-black text-white bar-label-shadow">{oData.v}{unit}</span>}
+                                                            {isAccumulated && ach > 15 && <span className="text-2xl font-black text-white bar-label-shadow">{ach}%</span>}
                                                         </div>
-                                                        {ach <= 15 && <span className="absolute left-6 top-0 h-full flex items-center text-2xl font-black text-slate-400">{oData.v}{unit}</span>}
+                                                        {!isAccumulated && ach <= 15 && <span className="absolute left-6 top-0 h-full flex items-center text-2xl font-black text-slate-400">{oData.v}{unit}</span>}
+                                                        {isAccumulated && ach <= 15 && <span className="absolute left-6 top-0 h-full flex items-center text-2xl font-black text-slate-400">{ach}%</span>}
                                                     </div>
                                                     <div className="flex justify-between mt-4 px-3 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] opacity-80">
-                                                        <span>Min: {currentBase}{unit}</span>
-                                                        <span>Obj: {currentTarget}{unit}</span>
+                                                        <span>{isAccumulated ? 'Anual' : `Min: ${currentBase}${unit}`}</span>
+                                                        <span>{!isAccumulated && `Obj: ${currentTarget}${unit}`}</span>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -731,26 +758,28 @@ const App = () => {
                                                     {obj.sub.map(s => {
                                                         const sData = oData.s[s.id];
                                                         if (!sData.e) return null;
-                                                        const sAch = calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                        const sAch = isAccumulated ? '---' : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                         const sRule = OBJECTIVE_RULES[s.id];
-                                                        const sDefaultTarget = sRule ? (typeof sRule.target === 'function' ? sRule.target(mIdx) : sRule.target) : 100;
-                                                        const sCurrentTarget = (sData.t !== null && sData.t !== undefined) ? sData.t : sDefaultTarget;
+                                                        const sDefTarget = sRule ? (typeof sRule.target === 'function' ? sRule.target(mIdx) : sRule.target) : 100;
+                                                        const sCurTarget = (sData.t !== null && sData.t !== undefined) ? sData.t : sDefTarget;
                                                         const sUnit = sRule ? sRule.unit : '%';
-                                                        const sColor = getHeatColor(sAch);
+                                                        const sColor = typeof sAch === 'number' ? getHeatColor(sAch) : '#cbd5e1';
                                                         return (
                                                             <div key={s.id} className="bg-slate-50/50 p-6 rounded-[2.5rem] border border-slate-100/50 hover:bg-white transition-all group/sub">
                                                                 <div className="flex justify-between items-center mb-4">
                                                                     <span className="text-[11px] font-black uppercase text-slate-500 tracking-tight w-2/3">
-                                                                        {getDynamicLabel(s.id, sCurrentTarget)}
+                                                                        {getDynamicLabel(s.id, sCurTarget)}
                                                                     </span>
-                                                                    <span className="text-sm font-black tabular-nums" style={{ color: sColor }}>{sAch}%</span>
+                                                                    <span className="text-sm font-black tabular-nums" style={{ color: sColor }}>{sAch}{typeof sAch === 'number' ? '%' : ''}</span>
                                                                 </div>
-                                                                <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
-                                                                    <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
-                                                                        {sAch > 20 && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
+                                                                {!isAccumulated && (
+                                                                    <div className="w-full bg-white rounded-xl h-10 overflow-hidden shadow-sm relative border border-slate-200">
+                                                                        <div className="h-full heat-bar-transition rounded-r-xl flex items-center justify-center" style={{ width: `${sAch}%`, backgroundColor: sColor }}>
+                                                                            {Number(sAch) > 20 && <span className="text-xs font-black text-white bar-label-shadow">{sData.v}{sUnit}</span>}
+                                                                        </div>
+                                                                        {Number(sAch) <= 20 && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
                                                                     </div>
-                                                                    {sAch <= 20 && <span className="absolute left-4 top-0 h-full flex items-center text-xs font-black text-slate-400">{sData.v}{sUnit}</span>}
-                                                                </div>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
