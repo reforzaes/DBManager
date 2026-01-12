@@ -7,7 +7,7 @@ import {
 
 const API_URL = "api.php";
 const SPECIAL_NAME = 'Objetivos de equipo';
-const SPECIAL_LINK = 'https://gonzalezjavier.com/AMP/';
+const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
 
 const MANAGERS = [
     { id: 'm1', name: 'Manuel Castillo', avatar: 'MC', color: '#3b82f6' },
