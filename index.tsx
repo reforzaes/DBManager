@@ -88,9 +88,9 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
 
 const getHeatColor = (val) => {
     if (val <= 0) return '#cbd5e1'; 
-    if (val < 50) return '#e6a23c'; 
-    if (val < 85) return '#f3af4a'; 
-    return '#67c23a'; 
+    if (val < 50) return '#ef4444'; // Rojo para menos del 50%
+    if (val < 85) return '#f3af4a'; // Naranja/Amarillo
+    return '#67c23a'; // Verde
 };
 
 const App = () => {
@@ -112,14 +112,23 @@ const App = () => {
     const trendMenuRef = useRef(null);
 
     const isAccumulated = activeMonth === 'accumulated';
+    const isQuarter = activeMonth.startsWith('q');
     
     const getActiveDisplayLabel = () => {
         if (isAccumulated) return 'Año Acumulado';
+        if (activeMonth === 'q1') return '1 Trimestre';
+        if (activeMonth === 'q2') return '2 Trimestre';
+        if (activeMonth === 'q3') return '3 Trimestre';
+        if (activeMonth === 'q4') return '4 Trimestre';
         return getMonthWithQuarter(parseInt(activeMonth));
     };
 
     const mIdx = useMemo(() => {
         if (isAccumulated) return 11;
+        if (activeMonth === 'q1') return 2;
+        if (activeMonth === 'q2') return 5;
+        if (activeMonth === 'q3') return 8;
+        if (activeMonth === 'q4') return 11;
         return parseInt(activeMonth);
     }, [activeMonth, isAccumulated]);
 
@@ -189,7 +198,7 @@ const App = () => {
     };
 
     const handleUpdate = (newData, newComp) => {
-        if (isAccumulated) return;
+        if (isAccumulated || isQuarter) return;
         setData({...newData});
         setComp({...newComp});
         saveToDb(newData, newComp);
@@ -220,21 +229,68 @@ const App = () => {
         return calculateAch(sId, subData.v, monthIndex, subData.t, subData.b);
     };
 
-    const calculateAnualAvg = (mId, oId) => {
+    const calculateTimeframeAvg = (mId, oId, timeframe) => {
         if (!comp || !data || !comp[mId]) return 0;
-        const validatedMonths = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
-        if (validatedMonths.length === 0) return 0;
-        const sum = validatedMonths.reduce((acc, mKey) => acc + getObjectiveAchievement(mId, oId, parseInt(mKey)), 0);
-        return Math.round(sum / validatedMonths.length);
+        let monthsToAverage = [];
+        if (timeframe === 'accumulated') {
+            monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
+        } else if (timeframe.startsWith('q')) {
+            const q = parseInt(timeframe.charAt(1));
+            const start = (q - 1) * 3;
+            monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId][mKey] === true);
+        }
+        if (monthsToAverage.length === 0) return 0;
+        const sum = monthsToAverage.reduce((acc, mKey) => acc + getObjectiveAchievement(mId, oId, parseInt(mKey)), 0);
+        return Math.round(sum / monthsToAverage.length);
     };
 
-    const calculateSubAnualAvg = (mId, oId, sId) => {
+    const calculateSubTimeframeAvg = (mId, oId, sId, timeframe) => {
         if (!comp || !data || !comp[mId]) return 0;
-        const validatedMonths = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
-        if (validatedMonths.length === 0) return 0;
-        const sum = validatedMonths.reduce((acc, mKey) => acc + getSubObjectiveAchievement(mId, oId, sId, parseInt(mKey)), 0);
-        return Math.round(sum / validatedMonths.length);
+        let monthsToAverage = [];
+        if (timeframe === 'accumulated') {
+            monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
+        } else if (timeframe.startsWith('q')) {
+            const q = parseInt(timeframe.charAt(1));
+            const start = (q - 1) * 3;
+            monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId][mKey] === true);
+        }
+        if (monthsToAverage.length === 0) return 0;
+        const sum = monthsToAverage.reduce((acc, mKey) => acc + getSubObjectiveAchievement(mId, oId, sId, parseInt(mKey)), 0);
+        return Math.round(sum / monthsToAverage.length);
     };
+
+    const calculateValueAvg = (mId, oId, timeframe) => {
+        if (!comp || !data || !comp[mId]) return 0;
+        let monthsToAverage = [];
+        if (timeframe === 'accumulated') {
+            monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
+        } else if (timeframe.startsWith('q')) {
+            const q = parseInt(timeframe.charAt(1));
+            const start = (q - 1) * 3;
+            monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId][mKey] === true);
+        }
+        if (monthsToAverage.length === 0) return 0;
+        const sum = monthsToAverage.reduce((acc, mKey) => acc + (data[mId][oId][mKey]?.v || 0), 0);
+        return (sum / monthsToAverage.length).toFixed(1);
+    };
+
+    const calculateSubValueAvg = (mId, oId, sId, timeframe) => {
+        if (!comp || !data || !comp[mId]) return 0;
+        let monthsToAverage = [];
+        if (timeframe === 'accumulated') {
+            monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
+        } else if (timeframe.startsWith('q')) {
+            const q = parseInt(timeframe.charAt(1));
+            const start = (q - 1) * 3;
+            monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId][mKey] === true);
+        }
+        if (monthsToAverage.length === 0) return 0;
+        const sum = monthsToAverage.reduce((acc, mKey) => acc + (data[mId][oId][mKey]?.s[sId]?.v || 0), 0);
+        return (sum / monthsToAverage.length).toFixed(1);
+    };
+
+    const calculateAnualAvg = (mId, oId) => calculateTimeframeAvg(mId, oId, 'accumulated');
+    const calculateSubAnualAvg = (mId, oId, sId) => calculateSubTimeframeAvg(mId, oId, sId, 'accumulated');
 
     const globalAvg = (mId) => {
         if (!data || !comp || !comp[mId]) return 0;
@@ -261,8 +317,8 @@ const App = () => {
             const point: any = { subject: o.name };
             MANAGERS.forEach(m => {
                 let val = 0;
-                if (isAccumulated) {
-                    val = calculateAnualAvg(m.id, o.id);
+                if (isAccumulated || isQuarter) {
+                    val = calculateTimeframeAvg(m.id, o.id, activeMonth);
                 } else {
                     const key = String(mIdx);
                     val = (comp[m.id] && comp[m.id][key] === true) ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
@@ -271,7 +327,7 @@ const App = () => {
             });
             return point;
         });
-    }, [data, activeMonth, comp, mIdx, isAccumulated]);
+    }, [data, activeMonth, comp, mIdx, isAccumulated, isQuarter]);
 
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
@@ -351,7 +407,6 @@ const App = () => {
                         {monthMenuOpen && (
                             <div className="dropdown-menu w-72">
                                 <div className="max-h-80 overflow-y-auto custom-scrollbar p-1">
-                                    {/* ACUMULADO ES LA PRIMERA OPCION Y RESALTADA */}
                                     <button 
                                         onClick={() => { setActiveMonth('accumulated'); setMonthMenuOpen(false); }} 
                                         className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl mb-3 shadow-sm border ${isAccumulated ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'}`}
@@ -434,7 +489,6 @@ const App = () => {
                                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                                         <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800">Evolución</h3>
                                         
-                                        {/* DESPLEGABLE DE FILTROS PARA EVOLUCION */}
                                         <div className="relative" ref={trendMenuRef}>
                                             <button 
                                                 onClick={() => setTrendFilterMenuOpen(!trendFilterMenuOpen)}
@@ -640,8 +694,8 @@ const App = () => {
                     <div className="w-full max-w-full mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 pb-20 animate-fade-in px-2 lg:px-6">
                         {OBJECTIVES.map(obj => {
                             if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
-                            const ach = isAccumulated 
-                                ? calculateAnualAvg(activeManager.id, obj.id)
+                            const ach = (isAccumulated || isQuarter) 
+                                ? calculateTimeframeAvg(activeManager.id, obj.id, activeMonth)
                                 : getObjectiveAchievement(activeManager.id, obj.id, mIdx);
                                 
                             const oData = data[activeManager.id][obj.id][String(mIdx)];
@@ -667,10 +721,10 @@ const App = () => {
                                         {!obj.sub ? (
                                             <div className="w-full">
                                                 {renderProgressBar(
-                                                    isAccumulated ? '-' : oData.v, 
+                                                    (isAccumulated || isQuarter) ? calculateValueAvg(activeManager.id, obj.id, activeMonth) : oData.v, 
                                                     oData.b ?? (typeof OBJECTIVE_RULES[obj.id].base === 'function' ? OBJECTIVE_RULES[obj.id].base(mIdx) : OBJECTIVE_RULES[obj.id].base), 
                                                     oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target), 
-                                                    isAccumulated ? 'Promedio Anual' : getDynamicLabel(obj.id, (oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))), 
+                                                    (isAccumulated || isQuarter) ? `Prom. ${getActiveDisplayLabel()}` : getDynamicLabel(obj.id, (oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))), 
                                                     OBJECTIVE_RULES[obj.id].unit, 
                                                     ach
                                                 )}
@@ -683,17 +737,17 @@ const App = () => {
                                             obj.sub.map(s => {
                                                 const sData = oData.s[s.id];
                                                 if (!sData.e) return null;
-                                                const sAch = isAccumulated 
-                                                    ? calculateSubAnualAvg(activeManager.id, obj.id, s.id)
+                                                const sAch = (isAccumulated || isQuarter) 
+                                                    ? calculateSubTimeframeAvg(activeManager.id, obj.id, s.id, activeMonth)
                                                     : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
                                                 const sTarget = sData.t ?? (typeof OBJECTIVE_RULES[s.id].target === 'function' ? OBJECTIVE_RULES[s.id].target(mIdx) : OBJECTIVE_RULES[s.id].target);
                                                 return (
                                                     <div key={s.id} className="w-full">
                                                         {renderProgressBar(
-                                                            isAccumulated ? '-' : sData.v, 
+                                                            (isAccumulated || isQuarter) ? calculateSubValueAvg(activeManager.id, obj.id, s.id, activeMonth) : sData.v, 
                                                             sData.b ?? (typeof OBJECTIVE_RULES[s.id].base === 'function' ? OBJECTIVE_RULES[s.id].base(mIdx) : OBJECTIVE_RULES[s.id].base), 
                                                             sTarget, 
-                                                            isAccumulated ? `Prom. ${s.name}` : getDynamicLabel(s.id, sTarget), 
+                                                            (isAccumulated || isQuarter) ? `Prom. ${s.name}` : getDynamicLabel(s.id, sTarget), 
                                                             OBJECTIVE_RULES[s.id].unit, 
                                                             sAch
                                                         )}
