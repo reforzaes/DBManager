@@ -45,6 +45,12 @@ const OBJECTIVE_RULES = {
     'obj5': { label: (v) => `Estratégicos ${v}%`, target: 100, base: 50, unit: '%' }   
 };
 
+const getDynamicLabel = (id, target) => {
+    const rule = OBJECTIVE_RULES[id];
+    if (!rule) return id;
+    return rule.label(target);
+};
+
 const calculateAch = (id, val, month, targetOverride = null, baseOverride = null) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 0;
@@ -60,8 +66,7 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
     if (val <= base) return 0;
     if (val >= target) return 100;
     const achievement = ((val - base) / (target - base)) * 100;
-    const result = Math.max(0, Math.min(100, Math.round(achievement)));
-    return isNaN(result) ? 0 : result;
+    return Math.max(0, Math.min(100, Math.round(achievement)));
 };
 
 const OBJECTIVES = [
@@ -77,12 +82,6 @@ const getHeatColor = (val) => {
     if (val < 50) return '#ef4444'; 
     if (val < 85) return '#f59e0b'; 
     return '#10b981'; 
-};
-
-const getDynamicLabel = (id, target) => {
-    const rule = OBJECTIVE_RULES[id];
-    if (!rule) return id;
-    return rule.label(target);
 };
 
 const App = () => {
@@ -113,9 +112,9 @@ const App = () => {
             OBJECTIVES.forEach(o => {
                 initData[m.id][o.id] = {};
                 MONTHS.forEach((_, i) => {
-                    const monthKey = String(i);
+                    const key = String(i);
                     if (o.sub) {
-                        initData[m.id][o.id][monthKey] = {
+                        initData[m.id][o.id][key] = {
                             e: true,
                             s: o.sub.reduce((acc, s) => ({
                                 ...acc, 
@@ -123,9 +122,9 @@ const App = () => {
                             }), {})
                         };
                     } else {
-                        initData[m.id][o.id][monthKey] = { v: 0, e: true, t: null, b: null };
+                        initData[m.id][o.id][key] = { v: 0, e: true, t: null, b: null };
                     }
-                    initComp[m.id][monthKey] = false;
+                    initComp[m.id][key] = false;
                 });
             });
         });
@@ -139,8 +138,7 @@ const App = () => {
             setApiError(null);
             try {
                 const res = await fetch(API_URL + "?t=" + Date.now());
-                if (!res.ok) throw new Error(`HTTP ${res.status}: Fallo al conectar con api.php`);
-                
+                if (!res.ok) throw new Error(`HTTP ${res.status}: Fallo de conexión.`);
                 const json = await res.json();
                 if (json && json.data) {
                     setData(json.data);
@@ -187,9 +185,9 @@ const App = () => {
     };
 
     const getObjectiveAchievement = (mId, oId, monthIndex) => {
-        const monthKey = String(monthIndex);
-        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][monthKey]) return 0;
-        const objData = data[mId][oId][monthKey];
+        const mesKey = String(monthIndex);
+        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][mesKey]) return 0;
+        const objData = data[mId][oId][mesKey];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
         if (!objMeta || !objData.e) return 0;
 
@@ -205,40 +203,43 @@ const App = () => {
 
     const calculateAnualAvg = (mId, oId) => {
         if (!comp || !data || !comp[mId]) return 0;
-        // Filtrar solo meses marcados como cerrados (true) en el completions
-        const closedMonths = Object.keys(comp[mId]).filter(mKey => comp[mId][mKey] === true);
-        if (closedMonths.length === 0) return 0;
-        
-        const sum = closedMonths.reduce((acc, mKey) => {
-            const ach = getObjectiveAchievement(mId, oId, parseInt(mKey));
-            return acc + (Number(ach) || 0);
-        }, 0);
-        
-        const avg = sum / closedMonths.length;
-        return isNaN(avg) ? 0 : Math.round(avg);
+        const validatedMonths = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
+        if (validatedMonths.length === 0) return 0;
+        const sum = validatedMonths.reduce((acc, mKey) => acc + getObjectiveAchievement(mId, oId, parseInt(mKey)), 0);
+        return Math.round(sum / validatedMonths.length);
     };
 
     const globalAvg = (mId) => {
         if (!data || !comp || !comp[mId]) return 0;
         const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
         if (activeScores.length === 0) return 0;
-        const sum = activeScores.reduce((a, b) => a + (Number(b) || 0), 0);
-        const result = Math.round(sum / OBJECTIVES.length);
-        return isNaN(result) ? 0 : result;
+        return Math.round(activeScores.reduce((a, b) => a + (Number(b) || 0), 0) / OBJECTIVES.length);
     };
 
     const getMonthlyAch = (mId, monthIndex) => {
-        const monthKey = String(monthIndex);
+        const mesKey = String(monthIndex);
         if (!data || !data[mId]) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
             const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
-            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][monthKey]?.e;
+            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][mesKey]?.e;
         });
         if (activeObjs.length === 0) return 0;
-        const sum = activeObjs.reduce((acc, o) => acc + (Number(getObjectiveAchievement(mId, o.id, monthIndex)) || 0), 0);
-        const result = Math.round(sum / activeObjs.length);
-        return isNaN(result) ? 0 : result;
+        const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
+        return Math.round(sum / activeObjs.length);
     };
+
+    const renderNameWithLink = (name, className) => {
+        if (name === SPECIAL_NAME) {
+            return (
+                <a href={SPECIAL_LINK} target="_blank" rel="noopener noreferrer" className={`${className} strategic-link`}>
+                    {name} <i className="fas fa-external-link-alt ml-1 text-[8px] opacity-50"></i>
+                </a>
+            );
+        }
+        return <span className={className}>{name}</span>;
+    };
+
+    const activeManager = view !== 'comparison' && view !== 'editor' ? MANAGERS.find(m => m.id === view) : null;
 
     const radarData = useMemo(() => {
         if (!data || !comp) return [];
@@ -249,11 +250,11 @@ const App = () => {
                 if (isAccumulated) {
                     val = calculateAnualAvg(m.id, o.id);
                 } else {
-                    const monthKey = String(mIdx);
-                    const isClosed = comp[m.id] && comp[m.id][monthKey] === true;
+                    const mesKey = String(mIdx);
+                    const isClosed = comp[m.id] && comp[m.id][mesKey] === true;
                     val = isClosed ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
-                point[m.id] = Number(val) || 0;
+                point[m.id] = Number(val || 0);
             });
             return point;
         });
@@ -262,21 +263,16 @@ const App = () => {
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
-            const monthKey = String(i);
+            const mesKey = String(i);
             const monthPoint: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                const isClosed = comp[m.id] && comp[m.id][monthKey] === true;
-                const val = isClosed ? getMonthlyAch(m.id, i) : null; 
-                monthPoint[m.id] = (val === null) ? null : (Number(val) || 0);
+                const isClosed = comp[m.id] && comp[m.id][mesKey] === true;
+                const val = isClosed ? getMonthlyAch(m.id, i) : 0; 
+                monthPoint[m.id] = Number(val || 0);
             });
             return monthPoint;
         });
     }, [data, comp]);
-
-    const activeManager = useMemo(() => {
-        if (view === 'comparison' || view === 'editor') return null;
-        return MANAGERS.find(m => m.id === view);
-    }, [view]);
 
     if (!data) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
@@ -300,7 +296,7 @@ const App = () => {
                 
                 <div className="flex flex-wrap items-center justify-center gap-3">
                     <div className="relative" ref={monthMenuRef}>
-                        <button onClick={() => setMonthMenuOpen(!monthMenuOpen)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-2xl text-xs font-black uppercase flex items-center gap-3 border min-w-[200px] justify-between">
+                        <button onClick={() => setMonthMenuOpen(!monthMenuOpen)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-2xl text-xs font-black uppercase flex items-center gap-3 border min-w-[200px] justify-between transition-colors">
                             <span className="flex items-center gap-3">
                                 <i className="far fa-calendar-alt opacity-40"></i>
                                 {isAccumulated ? 'Acumulado' : MONTHS[mIdx]}
@@ -382,8 +378,7 @@ const App = () => {
                             <div className="lg:col-span-8 space-y-8 flex flex-col">
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Rendimiento Estratégico</h3>
-                                    {/* BLINDAJE DE DIMENSIONES PARA RECHARTS */}
-                                    <div style={{ width: '100%', height: '450px', minHeight: '450px' }}>
+                                    <div style={{ width: '100%', height: '400px', minHeight: '400px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                                 <PolarGrid stroke="#e2e8f0" />
@@ -399,8 +394,7 @@ const App = () => {
                                 </div>
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Evolución</h3>
-                                    {/* BLINDAJE DE DIMENSIONES PARA RECHARTS */}
-                                    <div style={{ width: '100%', height: '450px', minHeight: '450px' }}>
+                                    <div style={{ width: '100%', height: '400px', minHeight: '400px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
                                             <LineChart data={trendData} margin={{ top: 5, right: 30, left: -10, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -451,8 +445,8 @@ const App = () => {
                                     </div>
                                     {!isAccumulated && (
                                         <button onClick={() => {
-                                            const monthKey = String(mIdx);
-                                            handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [monthKey]: !comp[m.id][monthKey]}});
+                                            const key = String(mIdx);
+                                            handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [key]: !comp[m.id][key]}});
                                         }} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 transition-all ${comp[m.id][String(mIdx)] ? 'bg-emerald-500 text-white border-emerald-400 shadow-md' : 'bg-slate-50 text-slate-400'}`}>
                                             {comp[m.id][String(mIdx)] ? '✓ Validado' : 'Validar'}
                                         </button>
@@ -461,8 +455,8 @@ const App = () => {
                                 <div className="space-y-6">
                                     {OBJECTIVES.map(obj => {
                                         if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
-                                        const monthKey = String(mIdx);
-                                        const oData = data[m.id][obj.id][monthKey];
+                                        const key = String(mIdx);
+                                        const oData = data[m.id][obj.id][key];
                                         const achVal = isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx);
                                         return (
                                             <div key={obj.id} className="p-6 rounded-[2rem] border bg-slate-50 border-slate-100">
@@ -473,7 +467,7 @@ const App = () => {
                                                 {!obj.sub ? (
                                                     <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : (oData?.v || 0)} onChange={e => {
                                                         const newData = {...data};
-                                                        newData[m.id][obj.id][monthKey].v = parseFloat(e.target.value) || 0;
+                                                        newData[m.id][obj.id][key].v = parseFloat(e.target.value) || 0;
                                                         handleUpdate(newData, comp);
                                                     }} className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 text-center text-2xl font-black outline-none shadow-sm focus:border-indigo-500 transition-colors" />
                                                 ) : (
@@ -483,7 +477,7 @@ const App = () => {
                                                                 <span className="text-[9px] font-bold text-slate-400 uppercase w-20 truncate">{s.name}</span>
                                                                 <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : (oData?.s[s.id]?.v || 0)} onChange={e => {
                                                                     const newData = {...data};
-                                                                    newData[m.id][obj.id][monthKey].s[s.id].v = parseFloat(e.target.value) || 0;
+                                                                    newData[m.id][obj.id][key].s[s.id].v = parseFloat(e.target.value) || 0;
                                                                     handleUpdate(newData, comp);
                                                                 }} className="flex-grow bg-white border border-slate-200 rounded-lg py-1 text-center font-black" />
                                                             </div>
@@ -508,7 +502,7 @@ const App = () => {
                             return (
                                 <div key={obj.id} className="glass-card p-10 rounded-[3.5rem] shadow-sm flex flex-col hover:shadow-xl transition-all">
                                     <div className="flex justify-between items-start mb-8">
-                                        <h4 className="text-xl font-black uppercase text-slate-800 leading-tight tracking-tighter w-2/3">{obj.name}</h4>
+                                        {renderNameWithLink(obj.sub ? obj.name : getDynamicLabel(obj.id, (data[view][obj.id][String(mIdx)]?.t || (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))), "text-xl font-black uppercase text-slate-800 leading-tight tracking-tighter w-2/3")}
                                         <span className="text-3xl font-black tabular-nums" style={{ color: color }}>{Number(ach) || 0}%</span>
                                     </div>
                                     <div className="w-full bg-slate-100 rounded-2xl h-16 overflow-hidden relative border-[4px] border-white shadow-inner">
