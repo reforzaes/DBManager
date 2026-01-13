@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { 
@@ -46,12 +45,6 @@ const OBJECTIVE_RULES = {
     'obj5': { label: (v) => `Estratégicos ${v}%`, target: 100, base: 50, unit: '%' }   
 };
 
-const getDynamicLabel = (id, target) => {
-    const rule = OBJECTIVE_RULES[id];
-    if (!rule) return id;
-    return rule.label(target);
-};
-
 const calculateAch = (id, val, month, targetOverride = null, baseOverride = null) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 0;
@@ -86,6 +79,12 @@ const getHeatColor = (val) => {
     return '#10b981'; 
 };
 
+const getDynamicLabel = (id, target) => {
+    const rule = OBJECTIVE_RULES[id];
+    if (!rule) return id;
+    return rule.label(target);
+};
+
 const App = () => {
     const [activeMonth, setActiveMonth] = useState('accumulated');
     const [view, setView] = useState('comparison');
@@ -105,8 +104,6 @@ const App = () => {
     const isAccumulated = activeMonth === 'accumulated';
     const mIdx = isAccumulated ? 11 : parseInt(activeMonth);
 
-    const activeManager = useMemo(() => MANAGERS.find(m => m.id === view), [view]);
-
     const initializeDefault = () => {
         const initData = {};
         const initComp = {};
@@ -116,8 +113,9 @@ const App = () => {
             OBJECTIVES.forEach(o => {
                 initData[m.id][o.id] = {};
                 MONTHS.forEach((_, i) => {
+                    const monthKey = String(i);
                     if (o.sub) {
-                        initData[m.id][o.id][i] = {
+                        initData[m.id][o.id][monthKey] = {
                             e: true,
                             s: o.sub.reduce((acc, s) => ({
                                 ...acc, 
@@ -125,9 +123,9 @@ const App = () => {
                             }), {})
                         };
                     } else {
-                        initData[m.id][o.id][i] = { v: 0, e: true, t: null, b: null };
+                        initData[m.id][o.id][monthKey] = { v: 0, e: true, t: null, b: null };
                     }
-                    initComp[m.id][i] = false;
+                    initComp[m.id][monthKey] = false;
                 });
             });
         });
@@ -141,7 +139,7 @@ const App = () => {
             setApiError(null);
             try {
                 const res = await fetch(API_URL + "?t=" + Date.now());
-                if (!res.ok) throw new Error(`HTTP ${res.status}: No se encontró api.php`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}: Fallo al conectar con api.php`);
                 
                 const json = await res.json();
                 if (json && json.data) {
@@ -189,8 +187,9 @@ const App = () => {
     };
 
     const getObjectiveAchievement = (mId, oId, monthIndex) => {
-        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][monthIndex]) return 0;
-        const objData = data[mId][oId][monthIndex];
+        const monthKey = String(monthIndex);
+        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][monthKey]) return 0;
+        const objData = data[mId][oId][monthKey];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
         if (!objMeta || !objData.e) return 0;
 
@@ -206,15 +205,16 @@ const App = () => {
 
     const calculateAnualAvg = (mId, oId) => {
         if (!comp || !data || !comp[mId]) return 0;
-        const validatedMonths = Object.keys(comp[mId] || {}).filter(m => comp[mId][m] === true);
-        if (validatedMonths.length === 0) return 0;
+        // Filtrar solo meses marcados como cerrados (true) en el completions
+        const closedMonths = Object.keys(comp[mId]).filter(mKey => comp[mId][mKey] === true);
+        if (closedMonths.length === 0) return 0;
         
-        const sum = validatedMonths.reduce((acc, mKey) => {
+        const sum = closedMonths.reduce((acc, mKey) => {
             const ach = getObjectiveAchievement(mId, oId, parseInt(mKey));
             return acc + (Number(ach) || 0);
         }, 0);
         
-        const avg = sum / validatedMonths.length;
+        const avg = sum / closedMonths.length;
         return isNaN(avg) ? 0 : Math.round(avg);
     };
 
@@ -228,10 +228,11 @@ const App = () => {
     };
 
     const getMonthlyAch = (mId, monthIndex) => {
+        const monthKey = String(monthIndex);
         if (!data || !data[mId]) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
             const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
-            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][monthIndex]?.e;
+            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][monthKey]?.e;
         });
         if (activeObjs.length === 0) return 0;
         const sum = activeObjs.reduce((acc, o) => acc + (Number(getObjectiveAchievement(mId, o.id, monthIndex)) || 0), 0);
@@ -248,7 +249,8 @@ const App = () => {
                 if (isAccumulated) {
                     val = calculateAnualAvg(m.id, o.id);
                 } else {
-                    const isClosed = comp[m.id] && comp[m.id][String(mIdx)] === true;
+                    const monthKey = String(mIdx);
+                    const isClosed = comp[m.id] && comp[m.id][monthKey] === true;
                     val = isClosed ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
                 point[m.id] = Number(val) || 0;
@@ -260,20 +262,26 @@ const App = () => {
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
+            const monthKey = String(i);
             const monthPoint: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                const isClosed = comp[m.id] && comp[m.id][String(i)] === true;
+                const isClosed = comp[m.id] && comp[m.id][monthKey] === true;
                 const val = isClosed ? getMonthlyAch(m.id, i) : null; 
-                monthPoint[m.id] = isNaN(val) || val === null ? null : Number(val);
+                monthPoint[m.id] = (val === null) ? null : (Number(val) || 0);
             });
             return monthPoint;
         });
     }, [data, comp]);
 
+    const activeManager = useMemo(() => {
+        if (view === 'comparison' || view === 'editor') return null;
+        return MANAGERS.find(m => m.id === view);
+    }, [view]);
+
     if (!data) return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
             <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
-            <p className="uppercase tracking-widest text-xs">Cargando Dashboard...</p>
+            <p className="uppercase tracking-widest text-xs">Sincronizando Dashboard...</p>
         </div>
     );
 
@@ -317,7 +325,7 @@ const App = () => {
                     </div>
 
                     <div className="relative" ref={managerMenuRef}>
-                        <button onClick={() => setManagerMenuOpen(!managerMenuOpen)} className={`px-6 py-3 rounded-2xl text-xs font-black uppercase flex items-center gap-3 border min-w-[240px] justify-between ${view === 'comparison' ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}>
+                        <button onClick={() => setManagerMenuOpen(!managerMenuOpen)} className={`px-6 py-3 rounded-2xl text-xs font-black uppercase flex items-center gap-3 border min-w-[240px] justify-between transition-colors ${view === 'comparison' ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}>
                             <span className="flex items-center gap-3">
                                 <i className="fas fa-users opacity-40"></i>
                                 {activeManager ? activeManager.name : 'Vista Global'}
@@ -350,7 +358,7 @@ const App = () => {
                         )}
                     </div>
 
-                    <div className="flex items-center bg-slate-900 rounded-2xl px-3 border border-white/10 ml-2">
+                    <div className="flex items-center bg-slate-900 rounded-2xl px-3 border border-white/10 ml-2 shadow-sm">
                         {!editorRole ? (
                             <input type="password" value={password} onChange={e => {
                                 const val = e.target.value;
@@ -374,8 +382,8 @@ const App = () => {
                             <div className="lg:col-span-8 space-y-8 flex flex-col">
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Rendimiento Estratégico</h3>
-                                    <div className="radar-container">
-                                        {/* Fix: changed width="0.99" to width="99%" to match the required type number | `${number}%` */}
+                                    {/* BLINDAJE DE DIMENSIONES PARA RECHARTS */}
+                                    <div style={{ width: '100%', height: '450px', minHeight: '450px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                                 <PolarGrid stroke="#e2e8f0" />
@@ -391,8 +399,8 @@ const App = () => {
                                 </div>
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Evolución</h3>
-                                    <div className="trend-container">
-                                        {/* Fix: changed width="0.99" to width="99%" to match the required type number | `${number}%` */}
+                                    {/* BLINDAJE DE DIMENSIONES PARA RECHARTS */}
+                                    <div style={{ width: '100%', height: '450px', minHeight: '450px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
                                             <LineChart data={trendData} margin={{ top: 5, right: 30, left: -10, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -421,7 +429,7 @@ const App = () => {
                                                     <p className="text-[10px] font-bold uppercase truncate w-24">{m.name}</p>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-xl font-black tabular-nums" style={{ color: getHeatColor(score) }}>{score}%</p>
+                                                    <p className="text-xl font-black tabular-nums" style={{ color: getHeatColor(score) }}>{Number(score) || 0}%</p>
                                                 </div>
                                             </div>
                                         );
@@ -433,7 +441,7 @@ const App = () => {
                 )}
 
                 {view === 'editor' && editorRole && (
-                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+                    <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in pb-20">
                         {MANAGERS.filter(m => editorFilter === 'all' || editorFilter === m.id).map(m => (
                             <div key={m.id} className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
                                 <div className="flex justify-between items-center border-b pb-6">
@@ -442,7 +450,10 @@ const App = () => {
                                         <h3 className="text-lg font-black uppercase text-slate-800">{m.name}</h3>
                                     </div>
                                     {!isAccumulated && (
-                                        <button onClick={() => handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [String(mIdx)]: !comp[m.id][String(mIdx)]}})} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 transition-all ${comp[m.id][String(mIdx)] ? 'bg-emerald-500 text-white border-emerald-400 shadow-md' : 'bg-slate-50 text-slate-400'}`}>
+                                        <button onClick={() => {
+                                            const monthKey = String(mIdx);
+                                            handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [monthKey]: !comp[m.id][monthKey]}});
+                                        }} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 transition-all ${comp[m.id][String(mIdx)] ? 'bg-emerald-500 text-white border-emerald-400 shadow-md' : 'bg-slate-50 text-slate-400'}`}>
                                             {comp[m.id][String(mIdx)] ? '✓ Validado' : 'Validar'}
                                         </button>
                                     )}
@@ -450,7 +461,8 @@ const App = () => {
                                 <div className="space-y-6">
                                     {OBJECTIVES.map(obj => {
                                         if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
-                                        const oData = data[m.id][obj.id][mIdx];
+                                        const monthKey = String(mIdx);
+                                        const oData = data[m.id][obj.id][monthKey];
                                         const achVal = isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx);
                                         return (
                                             <div key={obj.id} className="p-6 rounded-[2rem] border bg-slate-50 border-slate-100">
@@ -459,9 +471,9 @@ const App = () => {
                                                     <span className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-white border" style={{ color: getHeatColor(achVal) }}>{achVal}%</span>
                                                 </div>
                                                 {!obj.sub ? (
-                                                    <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : oData.v} onChange={e => {
+                                                    <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : (oData?.v || 0)} onChange={e => {
                                                         const newData = {...data};
-                                                        newData[m.id][obj.id][mIdx].v = parseFloat(e.target.value) || 0;
+                                                        newData[m.id][obj.id][monthKey].v = parseFloat(e.target.value) || 0;
                                                         handleUpdate(newData, comp);
                                                     }} className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 text-center text-2xl font-black outline-none shadow-sm focus:border-indigo-500 transition-colors" />
                                                 ) : (
@@ -469,9 +481,9 @@ const App = () => {
                                                         {obj.sub.map(s => (
                                                             <div key={s.id} className="flex items-center gap-3">
                                                                 <span className="text-[9px] font-bold text-slate-400 uppercase w-20 truncate">{s.name}</span>
-                                                                <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : oData.s[s.id].v} onChange={e => {
+                                                                <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : (oData?.s[s.id]?.v || 0)} onChange={e => {
                                                                     const newData = {...data};
-                                                                    newData[m.id][obj.id][mIdx].s[s.id].v = parseFloat(e.target.value) || 0;
+                                                                    newData[m.id][obj.id][monthKey].s[s.id].v = parseFloat(e.target.value) || 0;
                                                                     handleUpdate(newData, comp);
                                                                 }} className="flex-grow bg-white border border-slate-200 rounded-lg py-1 text-center font-black" />
                                                             </div>
@@ -497,10 +509,10 @@ const App = () => {
                                 <div key={obj.id} className="glass-card p-10 rounded-[3.5rem] shadow-sm flex flex-col hover:shadow-xl transition-all">
                                     <div className="flex justify-between items-start mb-8">
                                         <h4 className="text-xl font-black uppercase text-slate-800 leading-tight tracking-tighter w-2/3">{obj.name}</h4>
-                                        <span className="text-3xl font-black tabular-nums" style={{ color: color }}>{ach}%</span>
+                                        <span className="text-3xl font-black tabular-nums" style={{ color: color }}>{Number(ach) || 0}%</span>
                                     </div>
                                     <div className="w-full bg-slate-100 rounded-2xl h-16 overflow-hidden relative border-[4px] border-white shadow-inner">
-                                        <div className="h-full heat-bar-transition rounded-r-2xl" style={{ width: `${ach}%`, backgroundColor: color }}></div>
+                                        <div className="h-full heat-bar-transition rounded-r-2xl" style={{ width: `${Number(ach) || 0}%`, backgroundColor: color }}></div>
                                     </div>
                                 </div>
                             );
