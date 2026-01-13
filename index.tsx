@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 
 const API_URL = "api.php";
-const SPECIAL_NAME = 'Objetivos de equipo';
+const SPECIAL_NAME = 'KPI ESTRATÉGICOS VENDEDORES';
 const SPECIAL_LINK = 'https://gonzalezjavier.com/dbmanager/';
 
 const MANAGERS = [
@@ -45,6 +45,14 @@ const OBJECTIVE_RULES = {
     'obj5': { label: (v) => `Estratégicos ${v}%`, target: 100, base: 50, unit: '%' }   
 };
 
+const OBJECTIVES = [
+    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'MAP'}, {id:'s3', name:'Gama'}] },
+    { id: 'obj3', name: 'FULLGREEN', sub: [{id:'f1', name:'Demarca Con.'}, {id:'f2', name:'Demarca Des.'}, {id:'f3', name:'Rev. Descuentos'}, {id:'f4', name:'Rev. Cod 48'}] },
+    { id: 'obj4', name: 'TALENTO', sub: [{id:'t1', name:'Formaciones'}, {id:'t2', name:'One & One'}, {id:'t3', name:'PDI'}, {id:'t4', name:'ENPS'}], quarterly: true },
+    { id: 'obj2', name: 'SATISFACCIÓN CLIENTE' },
+    { id: 'obj5', name: SPECIAL_NAME }
+];
+
 const getDynamicLabel = (id, target) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return id;
@@ -69,29 +77,18 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
     return Math.max(0, Math.min(100, Math.round(achievement)));
 };
 
-const OBJECTIVES = [
-    { id: 'obj1', name: 'Performance', sub: [{id:'s1', name:'Venta +10%'}, {id:'s2', name:'MAP +1%'}, {id:'s3', name:'Gama >85%'}] },
-    { id: 'obj3', name: 'FullGreen', sub: [{id:'f1', name:'Demarca Con.'}, {id:'f2', name:'Demarca Des.'}, {id:'f3', name:'Rev. Descuentos'}, {id:'f4', name:'Rev. Cod 48'}] },
-    { id: 'obj4', name: 'Talento', sub: [{id:'t1', name:'Formaciones'}, {id:'t2', name:'One & One'}, {id:'t3', name:'PDI'}, {id:'t4', name:'ENPS'}], quarterly: true },
-    { id: 'obj2', name: 'Satisfacción Cliente' },
-    { id: 'obj5', name: SPECIAL_NAME }
-];
-
 const getHeatColor = (val) => {
     if (val <= 0) return '#cbd5e1'; 
-    if (val < 50) return '#ef4444'; 
-    if (val < 85) return '#f59e0b'; 
-    return '#10b981'; 
+    if (val < 50) return '#e6a23c'; 
+    if (val < 85) return '#f3af4a'; 
+    return '#67c23a'; 
 };
 
 const App = () => {
     const [activeMonth, setActiveMonth] = useState('accumulated');
     const [view, setView] = useState('comparison');
     const [editorRole, setEditorRole] = useState(null); 
-    const [editorFilter, setEditorFilter] = useState('all'); 
     const [password, setPassword] = useState('');
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [apiError, setApiError] = useState(null);
     const [data, setData] = useState(null);
     const [comp, setComp] = useState(null);
     const [managerMenuOpen, setManagerMenuOpen] = useState(false);
@@ -134,11 +131,8 @@ const App = () => {
 
     useEffect(() => {
         const load = async () => {
-            setIsSyncing(true);
-            setApiError(null);
             try {
                 const res = await fetch(API_URL + "?t=" + Date.now());
-                if (!res.ok) throw new Error(`HTTP ${res.status}: Fallo de conexión.`);
                 const json = await res.json();
                 if (json && json.data) {
                     setData(json.data);
@@ -146,12 +140,8 @@ const App = () => {
                 } else {
                     initializeDefault();
                 }
-            } catch (e: any) {
-                console.error("API Load Error:", e);
-                setApiError(e.message);
+            } catch (e) {
                 initializeDefault();
-            } finally { 
-                setIsSyncing(false); 
             }
         };
         load();
@@ -165,16 +155,13 @@ const App = () => {
     }, []);
 
     const saveToDb = async (newData, newComp) => {
-        setIsSyncing(true);
         try {
             await fetch(API_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ data: newData, completions: newComp })
             });
-        } catch (e) { 
-            console.error("Save Error:", e);
-        } finally { setIsSyncing(false); }
+        } catch (e) { console.error(e); }
     };
 
     const handleUpdate = (newData, newComp) => {
@@ -185,9 +172,9 @@ const App = () => {
     };
 
     const getObjectiveAchievement = (mId, oId, monthIndex) => {
-        const mesKey = String(monthIndex);
-        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][mesKey]) return 0;
-        const objData = data[mId][oId][mesKey];
+        const key = String(monthIndex);
+        if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][key]) return 0;
+        const objData = data[mId][oId][key];
         const objMeta = OBJECTIVES.find(o => o.id === oId);
         if (!objMeta || !objData.e) return 0;
 
@@ -211,35 +198,21 @@ const App = () => {
 
     const globalAvg = (mId) => {
         if (!data || !comp || !comp[mId]) return 0;
-        const activeScores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
-        if (activeScores.length === 0) return 0;
-        return Math.round(activeScores.reduce((a, b) => a + (Number(b) || 0), 0) / OBJECTIVES.length);
+        const scores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
+        return Math.round(scores.reduce((a, b) => a + (Number(b) || 0), 0) / OBJECTIVES.length);
     };
 
     const getMonthlyAch = (mId, monthIndex) => {
-        const mesKey = String(monthIndex);
+        const key = String(monthIndex);
         if (!data || !data[mId]) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
             const isQuarterlyOk = !o.quarterly || [2, 5, 8, 11].includes(monthIndex);
-            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][mesKey]?.e;
+            return isQuarterlyOk && data[mId][o.id] && data[mId][o.id][key]?.e;
         });
         if (activeObjs.length === 0) return 0;
         const sum = activeObjs.reduce((acc, o) => acc + getObjectiveAchievement(mId, o.id, monthIndex), 0);
         return Math.round(sum / activeObjs.length);
     };
-
-    const renderNameWithLink = (name, className) => {
-        if (name === SPECIAL_NAME) {
-            return (
-                <a href={SPECIAL_LINK} target="_blank" rel="noopener noreferrer" className={`${className} strategic-link`}>
-                    {name} <i className="fas fa-external-link-alt ml-1 text-[8px] opacity-50"></i>
-                </a>
-            );
-        }
-        return <span className={className}>{name}</span>;
-    };
-
-    const activeManager = view !== 'comparison' && view !== 'editor' ? MANAGERS.find(m => m.id === view) : null;
 
     const radarData = useMemo(() => {
         if (!data || !comp) return [];
@@ -250,36 +223,59 @@ const App = () => {
                 if (isAccumulated) {
                     val = calculateAnualAvg(m.id, o.id);
                 } else {
-                    const mesKey = String(mIdx);
-                    const isClosed = comp[m.id] && comp[m.id][mesKey] === true;
-                    val = isClosed ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
+                    const key = String(mIdx);
+                    val = (comp[m.id] && comp[m.id][key] === true) ? getObjectiveAchievement(m.id, o.id, mIdx) : 0;
                 }
                 point[m.id] = Number(val || 0);
             });
             return point;
         });
-    }, [data, activeMonth, comp, isAccumulated, mIdx]);
+    }, [data, activeMonth, comp, mIdx]);
 
     const trendData = useMemo(() => {
         if (!data || !comp) return [];
         return MONTHS.map((mName, i) => {
-            const mesKey = String(i);
-            const monthPoint: any = { name: mName.substring(0, 3) };
+            const key = String(i);
+            const point: any = { name: mName.substring(0, 3) };
             MANAGERS.forEach(m => {
-                const isClosed = comp[m.id] && comp[m.id][mesKey] === true;
-                const val = isClosed ? getMonthlyAch(m.id, i) : 0; 
-                monthPoint[m.id] = Number(val || 0);
+                const val = (comp[m.id] && comp[m.id][key] === true) ? getMonthlyAch(m.id, i) : 0; 
+                point[m.id] = Number(val || 0);
             });
-            return monthPoint;
+            return point;
         });
     }, [data, comp]);
 
-    if (!data) return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 font-black text-indigo-400">
-            <i className="fas fa-spinner fa-spin mb-4 text-3xl"></i>
-            <p className="uppercase tracking-widest text-xs">Sincronizando Dashboard...</p>
-        </div>
-    );
+    const activeManager = view !== 'comparison' && view !== 'editor' ? MANAGERS.find(m => m.id === view) : null;
+
+    if (!data) return <div className="min-h-screen flex items-center justify-center font-black text-indigo-400"><i className="fas fa-spinner fa-spin mr-2"></i> CARGANDO...</div>;
+
+    const renderProgressBar = (value, min, max, label, unit, ach) => {
+        const percentage = ach;
+        const color = getHeatColor(ach);
+        return (
+            <div className="flex flex-col gap-1 w-full animate-fade-in">
+                <div className="flex justify-between items-end mb-1">
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-tight">{label}</span>
+                    <span className="text-[10px] font-black" style={{ color: color }}>{percentage}%</span>
+                </div>
+                <div className="relative w-full h-8 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-inner">
+                    <div 
+                        className="h-full heat-bar-transition rounded-r-lg" 
+                        style={{ width: `${percentage}%`, backgroundColor: color, opacity: 0.8 }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="text-xs font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+                            {value}{unit}
+                        </span>
+                    </div>
+                </div>
+                <div className="flex justify-between mt-0.5">
+                    <span className="text-[8px] font-bold text-slate-400">{min}</span>
+                    <span className="text-[8px] font-bold text-slate-400">{max}</span>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -297,24 +293,17 @@ const App = () => {
                 <div className="flex flex-wrap items-center justify-center gap-3">
                     <div className="relative" ref={monthMenuRef}>
                         <button onClick={() => setMonthMenuOpen(!monthMenuOpen)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-2xl text-xs font-black uppercase flex items-center gap-3 border min-w-[200px] justify-between transition-colors">
-                            <span className="flex items-center gap-3">
-                                <i className="far fa-calendar-alt opacity-40"></i>
-                                {isAccumulated ? 'Acumulado' : MONTHS[mIdx]}
-                            </span>
+                            <span className="flex items-center gap-3"><i className="far fa-calendar-alt opacity-40"></i> {isAccumulated ? 'Acumulado' : MONTHS[mIdx]}</span>
                             <i className="fas fa-chevron-down text-[10px]"></i>
                         </button>
                         {monthMenuOpen && (
                             <div className="dropdown-menu w-72">
                                 <div className="max-h-80 overflow-y-auto custom-scrollbar p-1">
                                     {MONTHS.map((m, idx) => (
-                                        <button key={idx} onClick={() => { setActiveMonth(idx.toString()); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 ${activeMonth === idx.toString() ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-                                            {m}
-                                        </button>
+                                        <button key={idx} onClick={() => { setActiveMonth(idx.toString()); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 ${activeMonth === idx.toString() ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{m}</button>
                                     ))}
                                     <div className="border-t my-2"></div>
-                                    <button onClick={() => { setActiveMonth('accumulated'); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase rounded-xl ${isAccumulated ? 'bg-emerald-600 text-white' : 'text-emerald-600 hover:bg-emerald-50'}`}>
-                                        ✓ Año Acumulado
-                                    </button>
+                                    <button onClick={() => { setActiveMonth('accumulated'); setMonthMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase rounded-xl ${isAccumulated ? 'bg-emerald-600 text-white' : 'text-emerald-600 hover:bg-emerald-50'}`}>✓ Año Acumulado</button>
                                 </div>
                             </div>
                         )}
@@ -322,18 +311,13 @@ const App = () => {
 
                     <div className="relative" ref={managerMenuRef}>
                         <button onClick={() => setManagerMenuOpen(!managerMenuOpen)} className={`px-6 py-3 rounded-2xl text-xs font-black uppercase flex items-center gap-3 border min-w-[240px] justify-between transition-colors ${view === 'comparison' ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}>
-                            <span className="flex items-center gap-3">
-                                <i className="fas fa-users opacity-40"></i>
-                                {activeManager ? activeManager.name : 'Vista Global'}
-                            </span>
+                            <span className="flex items-center gap-3"><i className="fas fa-users opacity-40"></i> {activeManager ? activeManager.name : 'Vista Global'}</span>
                             <i className="fas fa-chevron-down text-[10px]"></i>
                         </button>
                         {managerMenuOpen && (
                             <div className="dropdown-menu w-80">
                                 <div className="max-h-96 overflow-y-auto custom-scrollbar p-1">
-                                    <button onClick={() => { setView('comparison'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl mb-1 flex items-center gap-3 ${view === 'comparison' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
-                                        <i className="fas fa-globe-americas"></i> Comparativa Global
-                                    </button>
+                                    <button onClick={() => { setView('comparison'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl mb-1 flex items-center gap-3 ${view === 'comparison' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Vista Global</button>
                                     <div className="border-t my-2"></div>
                                     {MANAGERS.map(m => (
                                         <button key={m.id} onClick={() => { setView(m.id); setManagerMenuOpen(false); }} className={`w-full text-left px-3 py-3 text-[10px] font-bold uppercase rounded-xl mb-1 flex items-center gap-4 ${view === m.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
@@ -341,14 +325,7 @@ const App = () => {
                                             <span className="truncate">{m.name}</span>
                                         </button>
                                     ))}
-                                    {editorRole && (
-                                        <>
-                                            <div className="border-t my-2"></div>
-                                            <button onClick={() => { setView('editor'); setManagerMenuOpen(false); }} className={`w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl ${view === 'editor' ? 'bg-amber-500 text-white' : 'text-amber-600 hover:bg-amber-50'}`}>
-                                                <i className="fas fa-edit mr-2"></i> Editor
-                                            </button>
-                                        </>
-                                    )}
+                                    {editorRole && <button onClick={() => { setView('editor'); setManagerMenuOpen(false); }} className="w-full text-left px-4 py-4 text-[10px] font-black uppercase rounded-xl mt-2 text-amber-600 bg-amber-50">Editor</button>}
                                 </div>
                             </div>
                         )}
@@ -357,15 +334,12 @@ const App = () => {
                     <div className="flex items-center bg-slate-900 rounded-2xl px-3 border border-white/10 ml-2 shadow-sm">
                         {!editorRole ? (
                             <input type="password" value={password} onChange={e => {
-                                const val = e.target.value;
-                                setPassword(val);
+                                const val = e.target.value; setPassword(val);
                                 if(val === '047') { setEditorRole('standard'); setPassword(''); setView('editor'); }
                                 if(val === '30104750') { setEditorRole('super'); setPassword(''); setView('editor'); }
                             }} placeholder="PIN" className="w-16 bg-transparent text-white text-center text-xs py-3 font-black focus:outline-none placeholder:text-white/20" />
                         ) : (
-                            <button onClick={() => { setEditorRole(null); setView('comparison'); }} className="text-emerald-400 text-xs py-3 font-black uppercase px-2">
-                                {editorRole.toUpperCase()}
-                            </button>
+                            <button onClick={() => { setEditorRole(null); setView('comparison'); }} className="text-emerald-400 text-xs py-3 font-black uppercase px-2">{editorRole.toUpperCase()}</button>
                         )}
                     </div>
                 </div>
@@ -383,9 +357,7 @@ const App = () => {
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                                 <PolarGrid stroke="#e2e8f0" />
                                                 <PolarAngleAxis dataKey="subject" tick={{fontSize: 10, fontWeight: 900, fill: '#64748b'}} />
-                                                {MANAGERS.map(m => (
-                                                    <Radar key={m.id} name={m.name} dataKey={m.id} stroke={m.color} fill={m.color} fillOpacity={0.05} strokeWidth={2} />
-                                                ))}
+                                                {MANAGERS.map(m => <Radar key={m.id} name={m.name} dataKey={m.id} stroke={m.color} fill={m.color} fillOpacity={0.05} strokeWidth={2} />)}
                                                 <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', fontSize: '11px', fontWeight: '900' }} />
                                                 <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '9px', fontWeight: '900' }} iconType="circle" />
                                             </RadarChart>
@@ -396,38 +368,30 @@ const App = () => {
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Evolución</h3>
                                     <div style={{ width: '100%', height: '400px', minHeight: '400px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
-                                            <LineChart data={trendData} margin={{ top: 5, right: 30, left: -10, bottom: 5 }}>
+                                            <LineChart data={trendData}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} dy={10} />
                                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} dx={-5} domain={[0, 100]} />
                                                 <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 20px rgba(0,0,0,0.05)', fontSize: '10px', fontWeight: '800' }} />
-                                                {MANAGERS.map(m => (
-                                                    <Line key={m.id} type="monotone" dataKey={m.id} stroke={m.color} strokeWidth={2.5} dot={false} name={m.name} connectNulls={true} />
-                                                ))}
+                                                {MANAGERS.map(m => <Line key={m.id} type="monotone" dataKey={m.id} stroke={m.color} strokeWidth={2.5} dot={false} name={m.name} />)}
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="lg:col-span-4 bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl flex flex-col">
                                 <h4 className="text-[10px] font-black uppercase opacity-40 tracking-widest mb-6 text-center">Ranking Global</h4>
                                 <div className="space-y-3 overflow-y-auto custom-scrollbar flex-grow pr-1">
-                                    {MANAGERS.sort((a,b) => globalAvg(b.id) - globalAvg(a.id)).map((m, rank) => {
-                                        const score = globalAvg(m.id);
-                                        return (
-                                            <div key={m.id} onClick={() => setView(m.id)} className="group flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-all cursor-pointer">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="text-[10px] font-black w-4 opacity-20">{rank + 1}</div>
-                                                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[9px] font-black">{m.avatar}</div>
-                                                    <p className="text-[10px] font-bold uppercase truncate w-24">{m.name}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-xl font-black tabular-nums" style={{ color: getHeatColor(score) }}>{Number(score) || 0}%</p>
-                                                </div>
+                                    {MANAGERS.sort((a,b) => globalAvg(b.id) - globalAvg(a.id)).map((m, rank) => (
+                                        <div key={m.id} onClick={() => setView(m.id)} className="group flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 hover:bg-white/10 transition-all cursor-pointer">
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-[10px] font-black w-4 opacity-20">{rank + 1}</div>
+                                                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[9px] font-black">{m.avatar}</div>
+                                                <p className="text-[10px] font-bold uppercase truncate w-24">{m.name}</p>
                                             </div>
-                                        );
-                                    })}
+                                            <p className="text-xl font-black tabular-nums" style={{ color: getHeatColor(globalAvg(m.id)) }}>{globalAvg(m.id)}%</p>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -436,7 +400,7 @@ const App = () => {
 
                 {view === 'editor' && editorRole && (
                     <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in pb-20">
-                        {MANAGERS.filter(m => editorFilter === 'all' || editorFilter === m.id).map(m => (
+                        {MANAGERS.map(m => (
                             <div key={m.id} className="bg-white p-8 rounded-[3rem] border shadow-sm space-y-6">
                                 <div className="flex justify-between items-center border-b pb-6">
                                     <div className="flex items-center gap-4">
@@ -444,10 +408,7 @@ const App = () => {
                                         <h3 className="text-lg font-black uppercase text-slate-800">{m.name}</h3>
                                     </div>
                                     {!isAccumulated && (
-                                        <button onClick={() => {
-                                            const key = String(mIdx);
-                                            handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [key]: !comp[m.id][key]}});
-                                        }} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 transition-all ${comp[m.id][String(mIdx)] ? 'bg-emerald-500 text-white border-emerald-400 shadow-md' : 'bg-slate-50 text-slate-400'}`}>
+                                        <button onClick={() => handleUpdate(data, {...comp, [m.id]: {...comp[m.id], [String(mIdx)]: !comp[m.id][String(mIdx)]}})} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase border-2 ${comp[m.id][String(mIdx)] ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-slate-50 text-slate-400'}`}>
                                             {comp[m.id][String(mIdx)] ? '✓ Validado' : 'Validar'}
                                         </button>
                                     )}
@@ -455,31 +416,78 @@ const App = () => {
                                 <div className="space-y-6">
                                     {OBJECTIVES.map(obj => {
                                         if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
-                                        const key = String(mIdx);
-                                        const oData = data[m.id][obj.id][key];
-                                        const achVal = isAccumulated ? calculateAnualAvg(m.id, obj.id) : getObjectiveAchievement(m.id, obj.id, mIdx);
+                                        const oData = data[m.id][obj.id][String(mIdx)];
                                         return (
                                             <div key={obj.id} className="p-6 rounded-[2rem] border bg-slate-50 border-slate-100">
                                                 <div className="flex justify-between items-center mb-6">
                                                     <h4 className="text-[11px] font-black uppercase text-slate-700">{obj.name}</h4>
-                                                    <span className="text-[10px] font-black px-3 py-1.5 rounded-xl bg-white border" style={{ color: getHeatColor(achVal) }}>{achVal}%</span>
+                                                    {editorRole === 'super' && (
+                                                        <input type="checkbox" checked={oData.e} onChange={e => {
+                                                            const newData = {...data}; newData[m.id][obj.id][String(mIdx)].e = e.target.checked;
+                                                            handleUpdate(newData, comp);
+                                                        }} className="w-4 h-4 accent-indigo-600" />
+                                                    )}
                                                 </div>
                                                 {!obj.sub ? (
-                                                    <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : (oData?.v || 0)} onChange={e => {
-                                                        const newData = {...data};
-                                                        newData[m.id][obj.id][key].v = parseFloat(e.target.value) || 0;
-                                                        handleUpdate(newData, comp);
-                                                    }} className="w-full bg-white border-2 border-slate-200 rounded-xl py-3 text-center text-2xl font-black outline-none shadow-sm focus:border-indigo-500 transition-colors" />
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-[10px] font-black uppercase text-slate-400">Valor</span>
+                                                            <input type="number" value={oData.v} onChange={e => {
+                                                                const newData = {...data}; newData[m.id][obj.id][String(mIdx)].v = parseFloat(e.target.value) || 0;
+                                                                handleUpdate(newData, comp);
+                                                            }} className="flex-grow bg-white border border-slate-200 rounded-xl py-2 text-center font-black" />
+                                                        </div>
+                                                        {editorRole === 'super' && (
+                                                            <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Mínimo (0%)</span>
+                                                                    <input type="number" placeholder="Básico" value={oData.b ?? ''} onChange={e => {
+                                                                        const newData = {...data}; newData[m.id][obj.id][String(mIdx)].b = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                        handleUpdate(newData, comp);
+                                                                    }} className="bg-white border border-slate-200 rounded-lg py-1 text-center text-xs font-bold" />
+                                                                </div>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Objetivo (100%)</span>
+                                                                    <input type="number" placeholder="Meta" value={oData.t ?? ''} onChange={e => {
+                                                                        const newData = {...data}; newData[m.id][obj.id][String(mIdx)].t = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                        handleUpdate(newData, comp);
+                                                                    }} className="bg-white border border-slate-200 rounded-lg py-1 text-center text-xs font-bold" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 ) : (
-                                                    <div className="space-y-3">
+                                                    <div className="space-y-4">
                                                         {obj.sub.map(s => (
-                                                            <div key={s.id} className="flex items-center gap-3">
-                                                                <span className="text-[9px] font-bold text-slate-400 uppercase w-20 truncate">{s.name}</span>
-                                                                <input disabled={isAccumulated} type="number" value={isAccumulated ? '' : (oData?.s[s.id]?.v || 0)} onChange={e => {
-                                                                    const newData = {...data};
-                                                                    newData[m.id][obj.id][key].s[s.id].v = parseFloat(e.target.value) || 0;
-                                                                    handleUpdate(newData, comp);
-                                                                }} className="flex-grow bg-white border border-slate-200 rounded-lg py-1 text-center font-black" />
+                                                            <div key={s.id} className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[9px] font-bold text-slate-400 uppercase">{s.name}</span>
+                                                                    {editorRole === 'super' && (
+                                                                        <input type="checkbox" checked={oData.s[s.id].e} onChange={e => {
+                                                                            const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].e = e.target.checked;
+                                                                            handleUpdate(newData, comp);
+                                                                        }} className="w-3 h-3 accent-indigo-600" />
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] font-black uppercase text-slate-400">V:</span>
+                                                                    <input type="number" value={oData.s[s.id].v} onChange={e => {
+                                                                        const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].v = parseFloat(e.target.value) || 0;
+                                                                        handleUpdate(newData, comp);
+                                                                    }} className="flex-grow bg-slate-50 border border-slate-100 rounded py-1 text-center font-black text-xs" />
+                                                                </div>
+                                                                {editorRole === 'super' && (
+                                                                    <div className="grid grid-cols-2 gap-2 mt-1">
+                                                                        <input type="number" placeholder="Mín" value={oData.s[s.id].b ?? ''} onChange={e => {
+                                                                            const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                            handleUpdate(newData, comp);
+                                                                        }} className="bg-slate-50 border border-slate-100 rounded text-[10px] text-center" />
+                                                                        <input type="number" placeholder="Obj" value={oData.s[s.id].t ?? ''} onChange={e => {
+                                                                            const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                            handleUpdate(newData, comp);
+                                                                        }} className="bg-slate-50 border border-slate-100 rounded text-[10px] text-center" />
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -494,19 +502,56 @@ const App = () => {
                 )}
 
                 {activeManager && (
-                    <div className="w-full max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 pb-20 animate-fade-in">
+                    <div className="w-full max-w-full mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 pb-20 animate-fade-in px-2 lg:px-6">
                         {OBJECTIVES.map(obj => {
                             if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
-                            const ach = isAccumulated ? calculateAnualAvg(view, obj.id) : getObjectiveAchievement(view, obj.id, mIdx);
-                            const color = getHeatColor(ach);
+                            const ach = isAccumulated ? calculateAnualAvg(activeManager.id, obj.id) : getObjectiveAchievement(activeManager.id, obj.id, mIdx);
+                            const oData = data[activeManager.id][obj.id][String(mIdx)];
+                            if (!oData?.e) return null;
+
+                            // Ancho especial para los de la imagen
+                            const colSpan = (obj.id === 'obj2' || obj.id === 'obj5') ? 'md:col-span-12 lg:col-span-6 xl:col-span-4' : 'md:col-span-12 lg:col-span-6 xl:col-span-4';
+                            const isWide = (obj.id === 'obj2' || obj.id === 'obj5');
+
                             return (
-                                <div key={obj.id} className="glass-card p-10 rounded-[3.5rem] shadow-sm flex flex-col hover:shadow-xl transition-all">
-                                    <div className="flex justify-between items-start mb-8">
-                                        {renderNameWithLink(obj.sub ? obj.name : getDynamicLabel(obj.id, (data[view][obj.id][String(mIdx)]?.t || (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))), "text-xl font-black uppercase text-slate-800 leading-tight tracking-tighter w-2/3")}
-                                        <span className="text-3xl font-black tabular-nums" style={{ color: color }}>{Number(ach) || 0}%</span>
+                                <div key={obj.id} className={`${isWide ? 'md:col-span-6' : 'md:col-span-4'} glass-card p-8 rounded-[2rem] border-0 shadow-[0_15px_45px_rgba(0,0,0,0.03)] flex flex-col bg-white ring-1 ring-slate-100`}>
+                                    <div className="flex justify-between items-start mb-10">
+                                        <h4 className="text-lg font-black uppercase text-slate-800 tracking-tighter flex items-center gap-2">
+                                            {obj.name}
+                                            {obj.id === 'obj5' && <i className="fas fa-external-link-alt text-[10px] opacity-20"></i>}
+                                        </h4>
+                                        <span className="text-2xl font-black tabular-nums" style={{ color: getHeatColor(ach) }}>{ach}%</span>
                                     </div>
-                                    <div className="w-full bg-slate-100 rounded-2xl h-16 overflow-hidden relative border-[4px] border-white shadow-inner">
-                                        <div className="h-full heat-bar-transition rounded-r-2xl" style={{ width: `${Number(ach) || 0}%`, backgroundColor: color }}></div>
+                                    
+                                    <div className={`grid ${isWide ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-y-10 gap-x-6`}>
+                                        {!obj.sub ? (
+                                            <div className="w-full">
+                                                {renderProgressBar(
+                                                    oData.v, 
+                                                    oData.b ?? (typeof OBJECTIVE_RULES[obj.id].base === 'function' ? OBJECTIVE_RULES[obj.id].base(mIdx) : OBJECTIVE_RULES[obj.id].base), 
+                                                    oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target), 
+                                                    isAccumulated ? 'Promedio Anual' : getDynamicLabel(obj.id, (oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))), 
+                                                    OBJECTIVE_RULES[obj.id].unit, 
+                                                    ach
+                                                )}
+                                                <div className="flex justify-between mt-1 text-[7px] font-black text-slate-300 uppercase tracking-widest">
+                                                    <span>MÍNIMO: {oData.b ?? (typeof OBJECTIVE_RULES[obj.id].base === 'function' ? OBJECTIVE_RULES[obj.id].base(mIdx) : OBJECTIVE_RULES[obj.id].base)}</span>
+                                                    <span>OBJETIVO: {oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target)}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            obj.sub.map(s => {
+                                                const sData = oData.s[s.id];
+                                                if (!sData.e) return null;
+                                                const sAch = calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
+                                                const sTarget = sData.t ?? (typeof OBJECTIVE_RULES[s.id].target === 'function' ? OBJECTIVE_RULES[s.id].target(mIdx) : OBJECTIVE_RULES[s.id].target);
+                                                return (
+                                                    <div key={s.id}>
+                                                        {renderProgressBar(sData.v, sData.b ?? (typeof OBJECTIVE_RULES[s.id].base === 'function' ? OBJECTIVE_RULES[s.id].base(mIdx) : OBJECTIVE_RULES[s.id].base), sTarget, getDynamicLabel(s.id, sTarget), OBJECTIVE_RULES[s.id].unit, sAch)}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
                             );
@@ -515,9 +560,7 @@ const App = () => {
                 )}
             </main>
 
-            <footer className="w-full bg-slate-900 py-12 px-6 text-center text-white/40 text-[10px] font-black uppercase tracking-[0.4em]">
-                PERFORMANCE ANALYTICS DASHBOARD — Leroy Merlin Strategic Units
-            </footer>
+            <footer className="w-full bg-slate-900 py-12 px-6 text-center text-white/40 text-[10px] font-black uppercase tracking-[0.4em]">PERFORMANCE ANALYTICS DASHBOARD — Leroy Merlin</footer>
         </div>
     );
 };
