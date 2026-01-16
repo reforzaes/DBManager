@@ -38,10 +38,10 @@ const OBJECTIVE_RULES = {
     's2': { label: (v) => `MAP +${v}%`, target: 1, base: 0, unit: '%' },       
     's3': { label: (v) => `Gama >${v}%`, target: 85, base: 80, unit: '%' },     
     'obj2': { label: (v) => `Satisfacción >${v}pts`, target: 70, base: 60, unit: 'pts' }, 
-    'f1': { label: (v) => `Demarca Con. ${v}%`, target: 100, base: 50, unit: '%' },    
-    'f2': { label: (v) => `Demarca Des. ${v}%`, target: 100, base: 50, unit: '%' },    
-    'f3': { label: (v) => `Rev. Descuentos ${v}%`, target: 100, base: 50, unit: '%' },    
-    'f4': { label: (v) => `Rev. Cod 48 ${v}%`, target: 100, base: 50, unit: '%' },    
+    'f1': { label: (v) => `Demarca Con. >${v}pts`, target: 80, base: 59, unit: 'pts' },    
+    'f2': { label: (v) => `Demarca Des. >${v}pts`, target: 80, base: 59, unit: 'pts' },    
+    'f3': { label: (v) => `Rev. Descuentos >${v}pts`, target: 80, base: 59, unit: 'pts' },    
+    'f4': { label: (v) => `Rev. Cod 48 >${v}pts`, target: 80, base: 59, unit: 'pts' },    
     't1': { 
         label: (v) => `Formaciones ${v}h`,
         target: (m) => [0,0,9,0,0,18,0,0,27,0,0,36][m], 
@@ -61,6 +61,22 @@ const OBJECTIVES = [
     { id: 'obj2', name: 'SATISFACCIÓN CLIENTE' },
     { id: 'obj5', name: SPECIAL_NAME }
 ];
+
+const getSafeRuleBase = (id, month) => {
+    const rule = OBJECTIVE_RULES[id];
+    if (!rule) return 0;
+    return typeof rule.base === 'function' ? rule.base(month) : rule.base;
+};
+
+const getSafeRuleTarget = (id, month) => {
+    const rule = OBJECTIVE_RULES[id];
+    if (!rule) return 100;
+    return typeof rule.target === 'function' ? rule.target(month) : rule.target;
+};
+
+const getSafeRuleUnit = (id) => {
+    return OBJECTIVE_RULES[id]?.unit || '';
+};
 
 const getDynamicLabel = (id, target) => {
     const rule = OBJECTIVE_RULES[id];
@@ -88,8 +104,8 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
 
 const getHeatColor = (val) => {
     if (val <= 0) return '#cbd5e1'; 
-    if (val < 50) return '#ef4444'; // Rojo para menos del 50%
-    if (val < 85) return '#f3af4a'; // Naranja/Amarillo
+    if (val < 50) return '#ef4444'; // Rojo para menos del 50% de cumplimiento
+    if (val < 85) return '#f3af4a'; // Ámbar/Amarillo
     return '#67c23a'; // Verde
 };
 
@@ -214,9 +230,9 @@ const App = () => {
         if (!objMeta.sub) {
             return calculateAch(oId, objData.v, monthIndex, objData.t, objData.b);
         } else {
-            const enabledSubs = objMeta.sub.filter(s => objData.s[s.id].e);
+            const enabledSubs = objMeta.sub.filter(s => objData.s?.[s.id]?.e);
             if (enabledSubs.length === 0) return 0;
-            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s[s.id].v, monthIndex, objData.s[s.id].t, objData.s[s.id].b), 0);
+            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s?.[s.id]?.v || 0, monthIndex, objData.s?.[s.id]?.t, objData.s?.[s.id]?.b), 0);
             return Math.round(sum / enabledSubs.length);
         }
     };
@@ -224,9 +240,9 @@ const App = () => {
     const getSubObjectiveAchievement = (mId, oId, sId, monthIndex) => {
         const key = String(monthIndex);
         if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][key]) return 0;
-        const subData = data[mId][oId][key].s[sId];
+        const subData = data[mId][oId][key].s?.[sId];
         if (!subData || !subData.e) return 0;
-        return calculateAch(sId, subData.v, monthIndex, subData.t, subData.b);
+        return calculateAch(sId, subData.v || 0, monthIndex, subData.t, subData.b);
     };
 
     const calculateTimeframeAvg = (mId, oId, timeframe) => {
@@ -285,7 +301,7 @@ const App = () => {
             monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId][mKey] === true);
         }
         if (monthsToAverage.length === 0) return 0;
-        const sum = monthsToAverage.reduce((acc, mKey) => acc + (data[mId][oId][mKey]?.s[sId]?.v || 0), 0);
+        const sum = monthsToAverage.reduce((acc, mKey) => acc + (data[mId][oId][mKey]?.s?.[sId]?.v || 0), 0);
         return (sum / monthsToAverage.length).toFixed(1);
     };
 
@@ -370,7 +386,7 @@ const App = () => {
                     </div>
                 </div>
                 <div className="flex justify-between mt-1 px-1">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">0</span>
+                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">{min}</span>
                     <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">{max}</span>
                 </div>
             </div>
@@ -599,7 +615,7 @@ const App = () => {
                                     {OBJECTIVES.map(obj => {
                                         if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
                                         const oKey = String(mIdx);
-                                        const oData = data[m.id][obj.id][oKey];
+                                        const oData = data[m.id]?.[obj.id]?.[oKey] || { v: 0, e: true, t: null, b: null, s: {} };
                                         return (
                                             <div key={obj.id} className="p-6 rounded-[2rem] border bg-slate-50 border-slate-100">
                                                 <div className="flex justify-between items-center mb-6">
@@ -641,44 +657,47 @@ const App = () => {
                                                     </div>
                                                 ) : (
                                                     <div className="space-y-4">
-                                                        {obj.sub.map(s => (
-                                                            <div key={s.id} className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-[9px] font-bold text-slate-500 uppercase">{s.name}</span>
-                                                                    {editorRole === 'super' && (
-                                                                        <input type="checkbox" checked={oData.s[s.id].e} onChange={e => {
-                                                                            const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].e = e.target.checked;
+                                                        {obj.sub.map(s => {
+                                                            const sData = oData.s?.[s.id] || { v: 0, e: true, t: null, b: null };
+                                                            return (
+                                                                <div key={s.id} className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-[9px] font-bold text-slate-500 uppercase">{s.name}</span>
+                                                                        {editorRole === 'super' && (
+                                                                            <input type="checkbox" checked={sData.e} onChange={e => {
+                                                                                const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].e = e.target.checked;
+                                                                                handleUpdate(newData, comp);
+                                                                            }} className="w-3 h-3 accent-indigo-600" />
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-[10px] font-black uppercase text-slate-400">Res:</span>
+                                                                        <input type="number" value={sData.v} onChange={e => {
+                                                                            const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].v = parseFloat(e.target.value) || 0;
                                                                             handleUpdate(newData, comp);
-                                                                        }} className="w-3 h-3 accent-indigo-600" />
+                                                                        }} className="flex-grow bg-slate-50 border border-slate-100 rounded py-1 text-center font-black text-xs" />
+                                                                    </div>
+                                                                    {editorRole === 'super' && (
+                                                                        <div className="grid grid-cols-2 gap-2 mt-1 pt-1 border-t border-slate-50">
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Mín</span>
+                                                                                <input type="number" placeholder="Mín" value={sData.b ?? ''} onChange={e => {
+                                                                                    const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                                    handleUpdate(newData, comp);
+                                                                                }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
+                                                                            </div>
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Obj</span>
+                                                                                <input type="number" placeholder="Obj" value={sData.t ?? ''} onChange={e => {
+                                                                                    const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                                                    handleUpdate(newData, comp);
+                                                                                }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
+                                                                            </div>
+                                                                        </div>
                                                                     )}
                                                                 </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-[10px] font-black uppercase text-slate-400">Res:</span>
-                                                                    <input type="number" value={oData.s[s.id].v} onChange={e => {
-                                                                        const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].v = parseFloat(e.target.value) || 0;
-                                                                        handleUpdate(newData, comp);
-                                                                    }} className="flex-grow bg-slate-50 border border-slate-100 rounded py-1 text-center font-black text-xs" />
-                                                                </div>
-                                                                {editorRole === 'super' && (
-                                                                    <div className="grid grid-cols-2 gap-2 mt-1 pt-1 border-t border-slate-50">
-                                                                        <div className="flex flex-col gap-0.5">
-                                                                            <span className="text-[7px] font-black text-slate-300 uppercase">Mín</span>
-                                                                            <input type="number" placeholder="Mín" value={oData.s[s.id].b ?? ''} onChange={e => {
-                                                                                const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                                                handleUpdate(newData, comp);
-                                                                            }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
-                                                                        </div>
-                                                                        <div className="flex flex-col gap-0.5">
-                                                                            <span className="text-[7px] font-black text-slate-300 uppercase">Obj</span>
-                                                                            <input type="number" placeholder="Obj" value={oData.s[s.id].t ?? ''} onChange={e => {
-                                                                                const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                                                handleUpdate(newData, comp);
-                                                                            }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
@@ -698,11 +717,14 @@ const App = () => {
                                 ? calculateTimeframeAvg(activeManager.id, obj.id, activeMonth)
                                 : getObjectiveAchievement(activeManager.id, obj.id, mIdx);
                                 
-                            const oData = data[activeManager.id][obj.id][String(mIdx)];
-                            if (!oData?.e) return null;
+                            const oData = data[activeManager.id]?.[obj.id]?.[String(mIdx)] || { v: 0, e: true, t: null, b: null, s: {} };
+                            if (!oData.e) return null;
 
                             const isWide = (obj.id === 'obj2' || obj.id === 'obj5');
                             const colSpan = isWide ? 'md:col-span-12 lg:col-span-6 xl:col-span-6' : 'md:col-span-12 lg:col-span-6 xl:col-span-4';
+
+                            const baseVal = oData.b ?? getSafeRuleBase(obj.id, mIdx);
+                            const targetVal = oData.t ?? getSafeRuleTarget(obj.id, mIdx);
 
                             return (
                                 <div key={obj.id} className={`${colSpan} glass-card p-10 rounded-[2.5rem] border-0 shadow-[0_20px_60px_rgba(0,0,0,0.02)] flex flex-col bg-white ring-1 ring-slate-100`}>
@@ -722,33 +744,30 @@ const App = () => {
                                             <div className="w-full">
                                                 {renderProgressBar(
                                                     (isAccumulated || isQuarter) ? calculateValueAvg(activeManager.id, obj.id, activeMonth) : oData.v, 
-                                                    oData.b ?? (typeof OBJECTIVE_RULES[obj.id].base === 'function' ? OBJECTIVE_RULES[obj.id].base(mIdx) : OBJECTIVE_RULES[obj.id].base), 
-                                                    oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target), 
-                                                    (isAccumulated || isQuarter) ? `Prom. ${getActiveDisplayLabel()}` : getDynamicLabel(obj.id, (oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target))), 
-                                                    OBJECTIVE_RULES[obj.id].unit, 
+                                                    baseVal, 
+                                                    targetVal, 
+                                                    (isAccumulated || isQuarter) ? `Prom. ${obj.name}` : getDynamicLabel(obj.id, targetVal), 
+                                                    getSafeRuleUnit(obj.id), 
                                                     ach
                                                 )}
-                                                <div className="flex justify-between mt-2 px-1 text-[8px] font-black text-slate-300 uppercase tracking-[0.1em]">
-                                                    <span>MÍNIMO: {oData.b ?? (typeof OBJECTIVE_RULES[obj.id].base === 'function' ? OBJECTIVE_RULES[obj.id].base(mIdx) : OBJECTIVE_RULES[obj.id].base)}</span>
-                                                    <span>OBJETIVO: {oData.t ?? (typeof OBJECTIVE_RULES[obj.id].target === 'function' ? OBJECTIVE_RULES[obj.id].target(mIdx) : OBJECTIVE_RULES[obj.id].target)}</span>
-                                                </div>
                                             </div>
                                         ) : (
                                             obj.sub.map(s => {
-                                                const sData = oData.s[s.id];
+                                                const sData = oData.s?.[s.id] || { v: 0, e: true, t: null, b: null };
                                                 if (!sData.e) return null;
                                                 const sAch = (isAccumulated || isQuarter) 
                                                     ? calculateSubTimeframeAvg(activeManager.id, obj.id, s.id, activeMonth)
-                                                    : calculateAch(s.id, sData.v, mIdx, sData.t, sData.b);
-                                                const sTarget = sData.t ?? (typeof OBJECTIVE_RULES[s.id].target === 'function' ? OBJECTIVE_RULES[s.id].target(mIdx) : OBJECTIVE_RULES[s.id].target);
+                                                    : calculateAch(s.id, sData.v || 0, mIdx, sData.t, sData.b);
+                                                const sTarget = sData.t ?? getSafeRuleTarget(s.id, mIdx);
+                                                const sBase = sData.b ?? getSafeRuleBase(s.id, mIdx);
                                                 return (
                                                     <div key={s.id} className="w-full">
                                                         {renderProgressBar(
-                                                            (isAccumulated || isQuarter) ? calculateSubValueAvg(activeManager.id, obj.id, s.id, activeMonth) : sData.v, 
-                                                            sData.b ?? (typeof OBJECTIVE_RULES[s.id].base === 'function' ? OBJECTIVE_RULES[s.id].base(mIdx) : OBJECTIVE_RULES[s.id].base), 
+                                                            (isAccumulated || isQuarter) ? calculateSubValueAvg(activeManager.id, obj.id, s.id, activeMonth) : (sData.v || 0), 
+                                                            sBase, 
                                                             sTarget, 
                                                             (isAccumulated || isQuarter) ? `Prom. ${s.name}` : getDynamicLabel(s.id, sTarget), 
-                                                            OBJECTIVE_RULES[s.id].unit, 
+                                                            getSafeRuleUnit(s.id), 
                                                             sAch
                                                         )}
                                                     </div>
