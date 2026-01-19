@@ -37,15 +37,15 @@ const OBJECTIVE_RULES = {
     's1': { 
         label: (v) => `Venta +${v}%`, 
         target: (m, mId) => {
-            if (mId === 'm2') return 10.6; 
-            if (mId === 'm1') return 6.4;  
-            return 10.0; 
+            if (mId === 'm2') return 10.6; // Vicky
+            if (mId === 'm1') return 6.4;  // Manu
+            return 10; 
         }, 
-        base: 0.0, 
+        base: 0, 
         unit: '%' 
     },      
     's2': { 
-        label: (v) => `PSTOCK: ROTACION <${v}`, 
+        label: (v) => `STOCK: ROTACION <${v}`, 
         target: (m, mId) => mId === 'm2' ? 35.40 : 59.50, 
         base: (m, mId) => mId === 'm2' ? 44.60 : 60.80, 
         unit: '' 
@@ -80,7 +80,7 @@ const OBJECTIVE_RULES = {
 };
 
 const OBJECTIVES = [
-    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'PSTOCK: ROTACION'}, {id:'s3', name:'STOCK: Avs+Tóx+Muer'}, {id:'s4', name:'% MDH'}] },
+    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'STOCK: ROTACION'}, {id:'s3', name:'STOCK: Avs + Tóxico+ Muerto'}, {id:'s4', name:'% MDH'}] },
     { id: 'obj3', name: 'FULLGREEN', sub: [{id:'f1', name:'Demarca Con.'}, {id:'f2', name:'Demarca Des.'}, {id:'f3', name:'Rev. Descuentos'}, {id:'f4', name:'Rev. Cod 48'}] },
     { id: 'obj4', name: 'TALENTO', sub: [{id:'t1', name:'Formaciones'}, {id:'t2', name:'One & One'}, {id:'t3', name:'PDI'}, {id:'t4', name:'ENPS'}], quarterly: true },
     { id: 'obj2', name: 'SATISFACCIÓN CLIENTE' },
@@ -111,7 +111,7 @@ const getDynamicLabel = (id, target) => {
 
 const calculateAch = (id, val, month, mId, targetOverride = null, baseOverride = null) => {
     const rule = OBJECTIVE_RULES[id];
-    if (!rule || val === 0) return 0; // Si el valor es 0, no puntúa
+    if (!rule) return 0;
     
     const target = (targetOverride !== null && targetOverride !== undefined && targetOverride !== '') 
         ? parseFloat(targetOverride) 
@@ -122,10 +122,12 @@ const calculateAch = (id, val, month, mId, targetOverride = null, baseOverride =
         : (typeof rule.base === 'function' ? rule.base(month, mId) : rule.base);
     
     if (base < target) {
+        // Normal case: higher is better
         if (val <= base) return 0;
         if (val >= target) return 100;
         return Math.max(0, Math.min(100, Math.round(((val - base) / (target - base)) * 100)));
     } else {
+        // Inverse case: lower is better (e.g. ROTACION, STOCK A+T+M)
         if (val >= base) return 0;
         if (val <= target) return 100;
         return Math.max(0, Math.min(100, Math.round(((base - val) / (base - target)) * 100)));
@@ -134,9 +136,9 @@ const calculateAch = (id, val, month, mId, targetOverride = null, baseOverride =
 
 const getHeatColor = (val) => {
     if (val <= 0) return '#cbd5e1'; 
-    if (val < 50) return '#ef4444'; 
-    if (val < 85) return '#f3af4a'; 
-    return '#67c23a'; 
+    if (val < 50) return '#ef4444'; // Rojo para menos del 50% de cumplimiento
+    if (val < 85) return '#f3af4a'; // Ámbar/Amarillo
+    return '#67c23a'; // Verde
 };
 
 const App = () => {
@@ -336,7 +338,8 @@ const App = () => {
     };
 
     const calculateAnualAvg = (mId, oId) => calculateTimeframeAvg(mId, oId, 'accumulated');
-    
+    const calculateSubAnualAvg = (mId, oId, sId) => calculateSubTimeframeAvg(mId, oId, sId, 'accumulated');
+
     const globalAvg = (mId) => {
         if (!data || !comp || !comp[mId]) return 0;
         const scores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
@@ -392,7 +395,7 @@ const App = () => {
 
     const activeManager = view !== 'comparison' && view !== 'editor' ? MANAGERS.find(m => m.id === view) : null;
 
-    if (!data) return <div className="min-h-screen flex items-center justify-center font-black text-indigo-400">CARGANDO...</div>;
+    if (!data) return <div className="min-h-screen flex items-center justify-center font-black text-indigo-400"><i className="fas fa-spinner fa-spin mr-2"></i> CARGANDO...</div>;
 
     const renderProgressBar = (value, min, max, label, unit, ach) => {
         const percentage = ach;
@@ -410,7 +413,7 @@ const App = () => {
                     />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <span className="text-xs font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
-                            {Number(value) === 0 ? '0' : `${value}${unit}`}
+                            {value === '-' ? '-' : `${value}${unit}`}
                         </span>
                     </div>
                 </div>
@@ -458,7 +461,9 @@ const App = () => {
                                     >
                                         ✓ Año Acumulado
                                     </button>
+                                    
                                     <div className="border-t border-slate-100 my-2"></div>
+                                    
                                     {MONTHS.map((m, idx) => (
                                         <button 
                                             key={idx} 
@@ -516,7 +521,7 @@ const App = () => {
                             <div className="lg:col-span-8 space-y-8 flex flex-col">
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800 mb-8">Rendimiento Estratégico</h3>
-                                    <div style={{ width: '100%', height: '400px' }}>
+                                    <div style={{ width: '100%', height: '400px', minHeight: '400px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
                                             <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
                                                 <PolarGrid stroke="#e2e8f0" />
@@ -531,10 +536,17 @@ const App = () => {
                                 <div className="bg-white p-6 md:p-10 rounded-[3rem] border shadow-sm flex flex-col">
                                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                                         <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-800">Evolución</h3>
+                                        
                                         <div className="relative" ref={trendMenuRef}>
-                                            <button onClick={() => setTrendFilterMenuOpen(!trendFilterMenuOpen)} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-3 shadow-lg hover:bg-slate-800 transition-all">
-                                                <i className="fas fa-filter text-indigo-400"></i> Filtrar Evolución
+                                            <button 
+                                                onClick={() => setTrendFilterMenuOpen(!trendFilterMenuOpen)}
+                                                className="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-3 shadow-lg hover:bg-slate-800 transition-all"
+                                            >
+                                                <i className="fas fa-filter text-indigo-400"></i>
+                                                Filtrar Evolución
+                                                <i className={`fas fa-chevron-${trendFilterMenuOpen ? 'up' : 'down'} text-[8px]`}></i>
                                             </button>
+                                            
                                             {trendFilterMenuOpen && (
                                                 <div className="dropdown-menu w-[340px] p-6 shadow-2xl border-slate-200">
                                                     <div className="space-y-6">
@@ -542,7 +554,11 @@ const App = () => {
                                                             <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Managers</h5>
                                                             <div className="grid grid-cols-2 gap-1.5">
                                                                 {MANAGERS.map(m => (
-                                                                    <button key={m.id} onClick={() => toggleTrendManager(m.id)} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${trendManagers.includes(m.id) ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-100 text-slate-500 opacity-60'}`}>
+                                                                    <button 
+                                                                        key={m.id} 
+                                                                        onClick={() => toggleTrendManager(m.id)}
+                                                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border transition-all ${trendManagers.includes(m.id) ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-100 text-slate-500 opacity-60'}`}
+                                                                    >
                                                                         <span className="w-4 h-4 rounded flex items-center justify-center text-[7px] font-black" style={{backgroundColor: m.color, color: 'white'}}>{m.avatar}</span>
                                                                         <span className="text-[8px] font-black uppercase truncate">{m.name.split(' ')[0]}</span>
                                                                     </button>
@@ -553,7 +569,11 @@ const App = () => {
                                                             <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">KPIs</h5>
                                                             <div className="flex flex-wrap gap-1.5">
                                                                 {OBJECTIVES.map(o => (
-                                                                    <button key={o.id} onClick={() => toggleTrendKpi(o.id)} className={`px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase transition-all ${trendKpis.includes(o.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-400'}`}>
+                                                                    <button 
+                                                                        key={o.id} 
+                                                                        onClick={() => toggleTrendKpi(o.id)}
+                                                                        className={`px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase transition-all ${trendKpis.includes(o.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-400'}`}
+                                                                    >
                                                                         {o.name.substring(0,6)}
                                                                     </button>
                                                                 ))}
@@ -564,7 +584,7 @@ const App = () => {
                                             )}
                                         </div>
                                     </div>
-                                    <div style={{ width: '100%', height: '400px' }}>
+                                    <div style={{ width: '100%', height: '400px', minHeight: '400px' }}>
                                         <ResponsiveContainer width="99%" height="100%">
                                             <LineChart data={trendData}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -572,7 +592,17 @@ const App = () => {
                                                 <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} dx={-5} domain={[0, 100]} />
                                                 <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 20px rgba(0,0,0,0.05)', fontSize: '10px', fontWeight: '800' }} />
                                                 {MANAGERS.map(m => trendManagers.includes(m.id) && (
-                                                    <Line key={m.id} type="monotone" dataKey={m.id} stroke={m.color} strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} name={m.name} connectNulls={true} />
+                                                    <Line 
+                                                        key={m.id} 
+                                                        type="monotone" 
+                                                        dataKey={m.id} 
+                                                        stroke={m.color} 
+                                                        strokeWidth={2.5} 
+                                                        dot={{ r: 3 }} 
+                                                        activeDot={{ r: 5 }}
+                                                        name={m.name} 
+                                                        connectNulls={true}
+                                                    />
                                                 ))}
                                             </LineChart>
                                         </ResponsiveContainer>
@@ -632,33 +662,24 @@ const App = () => {
                                                 {!obj.sub ? (
                                                     <div className="space-y-4">
                                                         <div className="flex items-center gap-3">
-                                                            <div className="flex flex-col flex-grow">
-                                                                <span className="text-[10px] font-black uppercase text-slate-400 mb-1">Resultado</span>
-                                                                <input type="number" step="any" value={oData.v} onChange={e => {
-                                                                    const valStr = e.target.value;
-                                                                    const newData = {...data}; 
-                                                                    newData[m.id][obj.id][oKey].v = valStr === '' ? 0 : parseFloat(valStr);
-                                                                    handleUpdate(newData, comp);
-                                                                }} className="bg-white border border-slate-200 rounded-xl py-2 text-center font-black" />
-                                                            </div>
-                                                            <div className="flex flex-col items-center justify-center p-2 bg-slate-200/50 rounded-xl min-w-[100px]">
-                                                                <span className="text-[8px] font-black opacity-40 uppercase">REGLA</span>
-                                                                <span className="text-[9px] font-black text-slate-600">0%: {getSafeRuleBase(obj.id, mIdx, m.id)}</span>
-                                                                <span className="text-[9px] font-black text-slate-600">100%: {getSafeRuleTarget(obj.id, mIdx, m.id)}</span>
-                                                            </div>
+                                                            <span className="text-[10px] font-black uppercase text-slate-400">Resultado</span>
+                                                            <input type="number" value={oData.v} onChange={e => {
+                                                                const newData = {...data}; newData[m.id][obj.id][oKey].v = parseFloat(e.target.value) || 0;
+                                                                handleUpdate(newData, comp);
+                                                            }} className="flex-grow bg-white border border-slate-200 rounded-xl py-2 text-center font-black" />
                                                         </div>
                                                         {editorRole === 'super' && (
                                                             <div className="grid grid-cols-2 gap-4 border-t pt-4">
                                                                 <div className="flex flex-col gap-1">
-                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Mínimo (0%) Personalizado</span>
-                                                                    <input type="number" step="any" placeholder="Básico" value={oData.b ?? ''} onChange={e => {
+                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Mínimo (0%)</span>
+                                                                    <input type="number" placeholder="Básico" value={oData.b ?? ''} onChange={e => {
                                                                         const newData = {...data}; newData[m.id][obj.id][oKey].b = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                         handleUpdate(newData, comp);
                                                                     }} className="bg-white border border-slate-200 rounded-lg py-1 text-center text-xs font-bold" />
                                                                 </div>
                                                                 <div className="flex flex-col gap-1">
-                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Objetivo (100%) Personalizado</span>
-                                                                    <input type="number" step="any" placeholder="Meta" value={oData.t ?? ''} onChange={e => {
+                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Objetivo (100%)</span>
+                                                                    <input type="number" placeholder="Meta" value={oData.t ?? ''} onChange={e => {
                                                                         const newData = {...data}; newData[m.id][obj.id][oKey].t = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                         handleUpdate(newData, comp);
                                                                     }} className="bg-white border border-slate-200 rounded-lg py-1 text-center text-xs font-bold" />
@@ -682,32 +703,24 @@ const App = () => {
                                                                         )}
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
-                                                                        <div className="flex-grow">
-                                                                            <span className="text-[10px] font-black uppercase text-slate-400">Res:</span>
-                                                                            <input type="number" step="any" value={sData.v} onChange={e => {
-                                                                                const valStr = e.target.value;
-                                                                                const newData = {...data}; 
-                                                                                newData[m.id][obj.id][oKey].s[s.id].v = valStr === '' ? 0 : parseFloat(valStr);
-                                                                                handleUpdate(newData, comp);
-                                                                            }} className="w-full bg-slate-50 border border-slate-100 rounded py-1 text-center font-black text-xs" />
-                                                                        </div>
-                                                                        <div className="flex flex-col items-center justify-center p-1 bg-slate-100 rounded text-[7px] min-w-[60px] font-black uppercase text-slate-500">
-                                                                            <span>0% : {getSafeRuleBase(s.id, mIdx, m.id)}</span>
-                                                                            <span>100% : {getSafeRuleTarget(s.id, mIdx, m.id)}</span>
-                                                                        </div>
+                                                                        <span className="text-[10px] font-black uppercase text-slate-400">Res:</span>
+                                                                        <input type="number" value={sData.v} onChange={e => {
+                                                                            const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].v = parseFloat(e.target.value) || 0;
+                                                                            handleUpdate(newData, comp);
+                                                                        }} className="flex-grow bg-slate-50 border border-slate-100 rounded py-1 text-center font-black text-xs" />
                                                                     </div>
                                                                     {editorRole === 'super' && (
                                                                         <div className="grid grid-cols-2 gap-2 mt-1 pt-1 border-t border-slate-50">
                                                                             <div className="flex flex-col gap-0.5">
-                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Mín (0%)</span>
-                                                                                <input type="number" step="any" placeholder="Mín" value={sData.b ?? ''} onChange={e => {
+                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Mín</span>
+                                                                                <input type="number" placeholder="Mín" value={sData.b ?? ''} onChange={e => {
                                                                                     const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                                     handleUpdate(newData, comp);
                                                                                 }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
                                                                             </div>
                                                                             <div className="flex flex-col gap-0.5">
-                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Obj (100%)</span>
-                                                                                <input type="number" step="any" placeholder="Obj" value={sData.t ?? ''} onChange={e => {
+                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Obj</span>
+                                                                                <input type="number" placeholder="Obj" value={sData.t ?? ''} onChange={e => {
                                                                                     const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                                     handleUpdate(newData, comp);
                                                                                 }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
@@ -735,12 +748,16 @@ const App = () => {
                             const ach = (isAccumulated || isQuarter) 
                                 ? calculateTimeframeAvg(activeManager.id, obj.id, activeMonth)
                                 : getObjectiveAchievement(activeManager.id, obj.id, mIdx);
+                                
                             const oData = data[activeManager.id]?.[obj.id]?.[String(mIdx)] || { v: 0, e: true, t: null, b: null, s: {} };
                             if (!oData.e) return null;
+
                             const isWide = (obj.id === 'obj2' || obj.id === 'obj5');
                             const colSpan = isWide ? 'md:col-span-12 lg:col-span-6 xl:col-span-6' : 'md:col-span-12 lg:col-span-6 xl:col-span-4';
+
                             const baseVal = oData.b ?? getSafeRuleBase(obj.id, mIdx, activeManager.id);
                             const targetVal = oData.t ?? getSafeRuleTarget(obj.id, mIdx, activeManager.id);
+
                             return (
                                 <div key={obj.id} className={`${colSpan} glass-card p-10 rounded-[2.5rem] border-0 shadow-[0_20px_60px_rgba(0,0,0,0.02)] flex flex-col bg-white ring-1 ring-slate-100`}>
                                     <div className="flex justify-between items-start mb-12">
@@ -753,13 +770,17 @@ const App = () => {
                                         </h4>
                                         <span className="text-3xl font-black tabular-nums" style={{ color: getHeatColor(ach) }}>{ach}%</span>
                                     </div>
+                                    
                                     <div className={`grid ${isWide ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-y-12 gap-x-10`}>
                                         {!obj.sub ? (
                                             <div className="w-full">
                                                 {renderProgressBar(
                                                     (isAccumulated || isQuarter) ? calculateValueAvg(activeManager.id, obj.id, activeMonth) : oData.v, 
-                                                    baseVal, targetVal, (isAccumulated || isQuarter) ? `Prom. ${obj.name}` : getDynamicLabel(obj.id, targetVal), 
-                                                    getSafeRuleUnit(obj.id), ach
+                                                    baseVal, 
+                                                    targetVal, 
+                                                    (isAccumulated || isQuarter) ? `Prom. ${obj.name}` : getDynamicLabel(obj.id, targetVal), 
+                                                    getSafeRuleUnit(obj.id), 
+                                                    ach
                                                 )}
                                             </div>
                                         ) : (
@@ -775,8 +796,11 @@ const App = () => {
                                                     <div key={s.id} className="w-full">
                                                         {renderProgressBar(
                                                             (isAccumulated || isQuarter) ? calculateSubValueAvg(activeManager.id, obj.id, s.id, activeMonth) : (sData.v || 0), 
-                                                            sBase, sTarget, (isAccumulated || isQuarter) ? `Prom. ${s.name}` : getDynamicLabel(s.id, sTarget), 
-                                                            getSafeRuleUnit(s.id), sAch
+                                                            sBase, 
+                                                            sTarget, 
+                                                            (isAccumulated || isQuarter) ? `Prom. ${s.name}` : getDynamicLabel(s.id, sTarget), 
+                                                            getSafeRuleUnit(s.id), 
+                                                            sAch
                                                         )}
                                                     </div>
                                                 );
@@ -789,6 +813,7 @@ const App = () => {
                     </div>
                 )}
             </main>
+
             <footer className="w-full bg-slate-900 py-12 px-6 text-center text-white/40 text-[10px] font-black uppercase tracking-[0.4em]">PERFORMANCE ANALYTICS DASHBOARD — Leroy Merlin</footer>
         </div>
     );
