@@ -87,31 +87,32 @@ const OBJECTIVES = [
     { id: 'obj5', name: SPECIAL_NAME }
 ];
 
-const getSafeRuleBase = (id, month, mId) => {
+const getSafeRuleBase = (id: string, month: number, mId: string) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 0;
     return typeof rule.base === 'function' ? rule.base(month, mId) : rule.base;
 };
 
-const getSafeRuleTarget = (id, month, mId) => {
+const getSafeRuleTarget = (id: string, month: number, mId: string) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 100;
     return typeof rule.target === 'function' ? rule.target(month, mId) : rule.target;
 };
 
-const getSafeRuleUnit = (id) => {
+const getSafeRuleUnit = (id: string) => {
     return OBJECTIVE_RULES[id]?.unit || '';
 };
 
-const getDynamicLabel = (id, target) => {
+const getDynamicLabel = (id: string, target: number) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return id;
     return rule.label(target);
 };
 
-const calculateAch = (id, val, month, mId, targetOverride = null, baseOverride = null) => {
+const calculateAch = (id: string, val: number, month: number, mId: string, targetOverride: any = null, baseOverride: any = null) => {
     const rule = OBJECTIVE_RULES[id];
-    if (!rule || val === 0) return 0; // Si el valor es 0, no puntúa
+    // REGLA SOLICITADA: Si el valor es 0, no hay consecución (se trata como no puntuado)
+    if (!rule || val === 0) return 0; 
     
     const target = (targetOverride !== null && targetOverride !== undefined && targetOverride !== '') 
         ? parseFloat(targetOverride) 
@@ -126,13 +127,14 @@ const calculateAch = (id, val, month, mId, targetOverride = null, baseOverride =
         if (val >= target) return 100;
         return Math.max(0, Math.min(100, Math.round(((val - base) / (target - base)) * 100)));
     } else {
+        // Casos inversos (ROTACION, STOCK A+T+M)
         if (val >= base) return 0;
         if (val <= target) return 100;
         return Math.max(0, Math.min(100, Math.round(((base - val) / (base - target)) * 100)));
     }
 };
 
-const getHeatColor = (val) => {
+const getHeatColor = (val: number) => {
     if (val <= 0) return '#cbd5e1'; 
     if (val < 50) return '#ef4444'; 
     if (val < 85) return '#f3af4a'; 
@@ -142,10 +144,10 @@ const getHeatColor = (val) => {
 const App = () => {
     const [activeMonth, setActiveMonth] = useState('accumulated');
     const [view, setView] = useState('comparison');
-    const [editorRole, setEditorRole] = useState(null); 
+    const [editorRole, setEditorRole] = useState<null | 'standard' | 'super'>(null); 
     const [password, setPassword] = useState('');
-    const [data, setData] = useState(null);
-    const [comp, setComp] = useState(null);
+    const [data, setData] = useState<any>(null);
+    const [comp, setComp] = useState<any>(null);
     const [managerMenuOpen, setManagerMenuOpen] = useState(false);
     const [monthMenuOpen, setMonthMenuOpen] = useState(false);
     
@@ -153,9 +155,9 @@ const App = () => {
     const [trendKpis, setTrendKpis] = useState(OBJECTIVES.map(o => o.id));
     const [trendFilterMenuOpen, setTrendFilterMenuOpen] = useState(false);
 
-    const managerMenuRef = useRef(null);
-    const monthMenuRef = useRef(null);
-    const trendMenuRef = useRef(null);
+    const managerMenuRef = useRef<HTMLDivElement>(null);
+    const monthMenuRef = useRef<HTMLDivElement>(null);
+    const trendMenuRef = useRef<HTMLDivElement>(null);
 
     const isAccumulated = activeMonth === 'accumulated';
     const isQuarter = activeMonth.startsWith('q');
@@ -179,8 +181,8 @@ const App = () => {
     }, [activeMonth, isAccumulated]);
 
     const initializeDefault = () => {
-        const initData = {};
-        const initComp = {};
+        const initData: any = {};
+        const initComp: any = {};
         MANAGERS.forEach(m => {
             initData[m.id] = {};
             initComp[m.id] = {};
@@ -224,16 +226,17 @@ const App = () => {
         };
         load();
 
-        const handleClickOutside = (event) => {
-            if (managerMenuRef.current && !managerMenuRef.current.contains(event.target)) setManagerMenuOpen(false);
-            if (monthMenuRef.current && !monthMenuRef.current.contains(event.target)) setMonthMenuOpen(false);
-            if (trendMenuRef.current && !trendMenuRef.current.contains(event.target)) setTrendFilterMenuOpen(false);
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Node;
+            if (managerMenuRef.current && !managerMenuRef.current.contains(target)) setManagerMenuOpen(false);
+            if (monthMenuRef.current && !monthMenuRef.current.contains(target)) setMonthMenuOpen(false);
+            if (trendMenuRef.current && !trendMenuRef.current.contains(target)) setTrendFilterMenuOpen(false);
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const saveToDb = async (newData, newComp) => {
+    const saveToDb = async (newData: any, newComp: any) => {
         try {
             await fetch(API_URL, {
                 method: 'POST',
@@ -243,14 +246,14 @@ const App = () => {
         } catch (e) { console.error(e); }
     };
 
-    const handleUpdate = (newData, newComp) => {
+    const handleUpdate = (newData: any, newComp: any) => {
         if (isAccumulated || isQuarter) return;
         setData({...newData});
         setComp({...newComp});
         saveToDb(newData, newComp);
     };
 
-    const getObjectiveAchievement = (mId, oId, monthIndex) => {
+    const getObjectiveAchievement = (mId: string, oId: string, monthIndex: number) => {
         const key = String(monthIndex);
         if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][key]) return 0;
         const objData = data[mId][oId][key];
@@ -267,7 +270,7 @@ const App = () => {
         }
     };
 
-    const getSubObjectiveAchievement = (mId, oId, sId, monthIndex) => {
+    const getSubObjectiveAchievement = (mId: string, oId: string, sId: string, monthIndex: number) => {
         const key = String(monthIndex);
         if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][key]) return 0;
         const subData = data[mId][oId][key].s?.[sId];
@@ -275,9 +278,9 @@ const App = () => {
         return calculateAch(sId, subData.v || 0, monthIndex, mId, subData.t, subData.b);
     };
 
-    const calculateTimeframeAvg = (mId, oId, timeframe) => {
+    const calculateTimeframeAvg = (mId: string, oId: string, timeframe: string) => {
         if (!comp || !data || !comp[mId]) return 0;
-        let monthsToAverage = [];
+        let monthsToAverage: string[] = [];
         if (timeframe === 'accumulated') {
             monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
         } else if (timeframe.startsWith('q')) {
@@ -290,9 +293,9 @@ const App = () => {
         return Math.round(sum / monthsToAverage.length);
     };
 
-    const calculateSubTimeframeAvg = (mId, oId, sId, timeframe) => {
+    const calculateSubTimeframeAvg = (mId: string, oId: string, sId: string, timeframe: string) => {
         if (!comp || !data || !comp[mId]) return 0;
-        let monthsToAverage = [];
+        let monthsToAverage: string[] = [];
         if (timeframe === 'accumulated') {
             monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
         } else if (timeframe.startsWith('q')) {
@@ -305,9 +308,9 @@ const App = () => {
         return Math.round(sum / monthsToAverage.length);
     };
 
-    const calculateValueAvg = (mId, oId, timeframe) => {
+    const calculateValueAvg = (mId: string, oId: string, timeframe: string) => {
         if (!comp || !data || !comp[mId]) return 0;
-        let monthsToAverage = [];
+        let monthsToAverage: string[] = [];
         if (timeframe === 'accumulated') {
             monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
         } else if (timeframe.startsWith('q')) {
@@ -317,12 +320,12 @@ const App = () => {
         }
         if (monthsToAverage.length === 0) return 0;
         const sum = monthsToAverage.reduce((acc, mKey) => acc + (data[mId][oId][mKey]?.v || 0), 0);
-        return (sum / monthsToAverage.length).toFixed(1);
+        return (sum / monthsToAverage.length).toFixed(2);
     };
 
-    const calculateSubValueAvg = (mId, oId, sId, timeframe) => {
+    const calculateSubValueAvg = (mId: string, oId: string, sId: string, timeframe: string) => {
         if (!comp || !data || !comp[mId]) return 0;
-        let monthsToAverage = [];
+        let monthsToAverage: string[] = [];
         if (timeframe === 'accumulated') {
             monthsToAverage = Object.keys(comp[mId] || {}).filter(mKey => comp[mId][mKey] === true);
         } else if (timeframe.startsWith('q')) {
@@ -332,18 +335,18 @@ const App = () => {
         }
         if (monthsToAverage.length === 0) return 0;
         const sum = monthsToAverage.reduce((acc, mKey) => acc + (data[mId][oId][mKey]?.s?.[sId]?.v || 0), 0);
-        return (sum / monthsToAverage.length).toFixed(1);
+        return (sum / monthsToAverage.length).toFixed(2);
     };
 
-    const calculateAnualAvg = (mId, oId) => calculateTimeframeAvg(mId, oId, 'accumulated');
+    const calculateAnualAvg = (mId: string, oId: string) => calculateTimeframeAvg(mId, oId, 'accumulated');
     
-    const globalAvg = (mId) => {
+    const globalAvg = (mId: string) => {
         if (!data || !comp || !comp[mId]) return 0;
         const scores = OBJECTIVES.map(o => calculateAnualAvg(mId, o.id));
         return Math.round(scores.reduce((a, b) => a + (Number(b) || 0), 0) / OBJECTIVES.length);
     };
 
-    const getMonthlyFilteredAch = (mId, monthIndex, kpiIds) => {
+    const getMonthlyFilteredAch = (mId: string, monthIndex: number, kpiIds: string[]) => {
         const key = String(monthIndex);
         if (!data || !data[mId]) return 0;
         const activeObjs = OBJECTIVES.filter(o => {
@@ -394,7 +397,7 @@ const App = () => {
 
     if (!data) return <div className="min-h-screen flex items-center justify-center font-black text-indigo-400">CARGANDO...</div>;
 
-    const renderProgressBar = (value, min, max, label, unit, ach) => {
+    const renderProgressBar = (value: any, min: any, max: any, label: string, unit: string, ach: number) => {
         const percentage = ach;
         const color = getHeatColor(ach);
         return (
@@ -422,11 +425,11 @@ const App = () => {
         );
     };
 
-    const toggleTrendManager = (id) => {
+    const toggleTrendManager = (id: string) => {
         setTrendManagers(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
     };
 
-    const toggleTrendKpi = (id) => {
+    const toggleTrendKpi = (id: string) => {
         setTrendKpis(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id]);
     };
 
@@ -641,23 +644,25 @@ const App = () => {
                                                                     handleUpdate(newData, comp);
                                                                 }} className="bg-white border border-slate-200 rounded-xl py-2 text-center font-black" />
                                                             </div>
-                                                            <div className="flex flex-col items-center justify-center p-2 bg-slate-200/50 rounded-xl min-w-[100px]">
-                                                                <span className="text-[8px] font-black opacity-40 uppercase">REGLA</span>
-                                                                <span className="text-[9px] font-black text-slate-600">0%: {getSafeRuleBase(obj.id, mIdx, m.id)}</span>
-                                                                <span className="text-[9px] font-black text-slate-600">100%: {getSafeRuleTarget(obj.id, mIdx, m.id)}</span>
+                                                            <div className="flex flex-col items-center justify-center p-2 bg-slate-200/50 rounded-xl min-w-[120px]">
+                                                                <span className="text-[8px] font-black opacity-40 uppercase mb-1">Regla por defecto</span>
+                                                                <div className="flex flex-col items-start gap-1">
+                                                                    <span className="text-[9px] font-black text-slate-600">Min (0%): <b className="text-slate-900">{getSafeRuleBase(obj.id, mIdx, m.id)}</b></span>
+                                                                    <span className="text-[9px] font-black text-slate-600">Obj (100%): <b className="text-slate-900">{getSafeRuleTarget(obj.id, mIdx, m.id)}</b></span>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                         {editorRole === 'super' && (
-                                                            <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                                                            <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4">
                                                                 <div className="flex flex-col gap-1">
-                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Mínimo (0%) Personalizado</span>
-                                                                    <input type="number" step="any" placeholder="Básico" value={oData.b ?? ''} onChange={e => {
+                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Min Personalizado (0%)</span>
+                                                                    <input type="number" step="any" placeholder="Mín" value={oData.b ?? ''} onChange={e => {
                                                                         const newData = {...data}; newData[m.id][obj.id][oKey].b = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                         handleUpdate(newData, comp);
                                                                     }} className="bg-white border border-slate-200 rounded-lg py-1 text-center text-xs font-bold" />
                                                                 </div>
                                                                 <div className="flex flex-col gap-1">
-                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Objetivo (100%) Personalizado</span>
+                                                                    <span className="text-[8px] font-black uppercase text-slate-400">Obj Personalizado (100%)</span>
                                                                     <input type="number" step="any" placeholder="Meta" value={oData.t ?? ''} onChange={e => {
                                                                         const newData = {...data}; newData[m.id][obj.id][oKey].t = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                         handleUpdate(newData, comp);
@@ -673,7 +678,7 @@ const App = () => {
                                                             return (
                                                                 <div key={s.id} className="flex flex-col gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
                                                                     <div className="flex items-center justify-between">
-                                                                        <span className="text-[9px] font-bold text-slate-500 uppercase">{s.name}</span>
+                                                                        <span className="text-[9px] font-black text-indigo-600 uppercase tracking-tight">{s.name}</span>
                                                                         {editorRole === 'super' && (
                                                                             <input type="checkbox" checked={sData.e} onChange={e => {
                                                                                 const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].e = e.target.checked;
@@ -681,32 +686,32 @@ const App = () => {
                                                                             }} className="w-3 h-3 accent-indigo-600" />
                                                                         )}
                                                                     </div>
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-3">
                                                                         <div className="flex-grow">
-                                                                            <span className="text-[10px] font-black uppercase text-slate-400">Res:</span>
+                                                                            <span className="text-[10px] font-black uppercase text-slate-400">Resultado:</span>
                                                                             <input type="number" step="any" value={sData.v} onChange={e => {
                                                                                 const valStr = e.target.value;
                                                                                 const newData = {...data}; 
                                                                                 newData[m.id][obj.id][oKey].s[s.id].v = valStr === '' ? 0 : parseFloat(valStr);
                                                                                 handleUpdate(newData, comp);
-                                                                            }} className="w-full bg-slate-50 border border-slate-100 rounded py-1 text-center font-black text-xs" />
+                                                                            }} className="w-full bg-slate-50 border border-slate-200 rounded py-1.5 text-center font-black text-xs" />
                                                                         </div>
-                                                                        <div className="flex flex-col items-center justify-center p-1 bg-slate-100 rounded text-[7px] min-w-[60px] font-black uppercase text-slate-500">
+                                                                        <div className="flex flex-col items-center justify-center p-1.5 bg-slate-100 rounded text-[7px] min-w-[70px] font-black uppercase text-slate-500">
                                                                             <span>0% : {getSafeRuleBase(s.id, mIdx, m.id)}</span>
                                                                             <span>100% : {getSafeRuleTarget(s.id, mIdx, m.id)}</span>
                                                                         </div>
                                                                     </div>
                                                                     {editorRole === 'super' && (
-                                                                        <div className="grid grid-cols-2 gap-2 mt-1 pt-1 border-t border-slate-50">
+                                                                        <div className="grid grid-cols-2 gap-2 mt-1 pt-2 border-t border-slate-100">
                                                                             <div className="flex flex-col gap-0.5">
-                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Mín (0%)</span>
+                                                                                <span className="text-[7px] font-black text-slate-400 uppercase">Min Pers.</span>
                                                                                 <input type="number" step="any" placeholder="Mín" value={sData.b ?? ''} onChange={e => {
                                                                                     const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].b = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                                     handleUpdate(newData, comp);
                                                                                 }} className="bg-slate-50 border border-slate-100 rounded text-[9px] text-center py-0.5" />
                                                                             </div>
                                                                             <div className="flex flex-col gap-0.5">
-                                                                                <span className="text-[7px] font-black text-slate-300 uppercase">Obj (100%)</span>
+                                                                                <span className="text-[7px] font-black text-slate-400 uppercase">Obj Pers.</span>
                                                                                 <input type="number" step="any" placeholder="Obj" value={sData.t ?? ''} onChange={e => {
                                                                                     const newData = {...data}; newData[m.id][obj.id][oKey].s[s.id].t = e.target.value === '' ? null : parseFloat(e.target.value);
                                                                                     handleUpdate(newData, comp);
