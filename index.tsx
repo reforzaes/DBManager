@@ -34,10 +34,34 @@ const getMonthWithQuarter = (idx: number) => {
 };
 
 const OBJECTIVE_RULES = {
-    's1': { label: (v) => `Venta +${v}%`, target: 10, base: 0, unit: '%' },      
-    's2': { label: (v) => `ROTACION <${v}`, target: 59.50, base: 60.80, unit: '' },       
-    's3': { label: (v) => `STOCK A+T+M <${v}%`, target: 10.50, base: 11.80, unit: '%' },     
-    's4': { label: (v) => `% MDH >${v}%`, target: 41.00, base: 36.37, unit: '%' },
+    's1': { 
+        label: (v) => `Venta +${v}%`, 
+        target: (m, mId) => {
+            if (mId === 'm2') return 10.6; // Vicky
+            if (mId === 'm1') return 6.4;  // Manu
+            return 10; 
+        }, 
+        base: 0, 
+        unit: '%' 
+    },      
+    's2': { 
+        label: (v) => `STOCK: ROTACION <${v}`, 
+        target: (m, mId) => mId === 'm2' ? 35.40 : 59.50, 
+        base: (m, mId) => mId === 'm2' ? 44.60 : 60.80, 
+        unit: '' 
+    },       
+    's3': { 
+        label: (v) => `STOCK: A+T+M <${v}%`, 
+        target: 10.50, 
+        base: (m, mId) => mId === 'm2' ? 11.63 : 11.80, 
+        unit: '%' 
+    },     
+    's4': { 
+        label: (v) => `% MDH >${v}%`, 
+        target: (m, mId) => mId === 'm2' ? 43.50 : 41.00, 
+        base: (m, mId) => mId === 'm2' ? 41.26 : 36.37, 
+        unit: '%' 
+    },
     'obj2': { label: (v) => `Satisfacción >${v}pts`, target: 70, base: 60, unit: 'pts' }, 
     'f1': { label: (v) => `Demarca Con. >${v}pts`, target: 80, base: 59, unit: 'pts' },    
     'f2': { label: (v) => `Demarca Des. >${v}pts`, target: 80, base: 59, unit: 'pts' },    
@@ -56,23 +80,23 @@ const OBJECTIVE_RULES = {
 };
 
 const OBJECTIVES = [
-    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'ROTACION'}, {id:'s3', name:'STOCK A+T+M'}, {id:'s4', name:'% MDH'}] },
+    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'STOCK: ROTACION'}, {id:'s3', name:'STOCK: Avs + Tóxico+ Muerto'}, {id:'s4', name:'% MDH'}] },
     { id: 'obj3', name: 'FULLGREEN', sub: [{id:'f1', name:'Demarca Con.'}, {id:'f2', name:'Demarca Des.'}, {id:'f3', name:'Rev. Descuentos'}, {id:'f4', name:'Rev. Cod 48'}] },
     { id: 'obj4', name: 'TALENTO', sub: [{id:'t1', name:'Formaciones'}, {id:'t2', name:'One & One'}, {id:'t3', name:'PDI'}, {id:'t4', name:'ENPS'}], quarterly: true },
     { id: 'obj2', name: 'SATISFACCIÓN CLIENTE' },
     { id: 'obj5', name: SPECIAL_NAME }
 ];
 
-const getSafeRuleBase = (id, month) => {
+const getSafeRuleBase = (id, month, mId) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 0;
-    return typeof rule.base === 'function' ? rule.base(month) : rule.base;
+    return typeof rule.base === 'function' ? rule.base(month, mId) : rule.base;
 };
 
-const getSafeRuleTarget = (id, month) => {
+const getSafeRuleTarget = (id, month, mId) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 100;
-    return typeof rule.target === 'function' ? rule.target(month) : rule.target;
+    return typeof rule.target === 'function' ? rule.target(month, mId) : rule.target;
 };
 
 const getSafeRuleUnit = (id) => {
@@ -85,17 +109,17 @@ const getDynamicLabel = (id, target) => {
     return rule.label(target);
 };
 
-const calculateAch = (id, val, month, targetOverride = null, baseOverride = null) => {
+const calculateAch = (id, val, month, mId, targetOverride = null, baseOverride = null) => {
     const rule = OBJECTIVE_RULES[id];
     if (!rule) return 0;
     
     const target = (targetOverride !== null && targetOverride !== undefined && targetOverride !== '') 
         ? parseFloat(targetOverride) 
-        : (typeof rule.target === 'function' ? rule.target(month) : rule.target);
+        : (typeof rule.target === 'function' ? rule.target(month, mId) : rule.target);
         
     const base = (baseOverride !== null && baseOverride !== undefined && baseOverride !== '')
         ? parseFloat(baseOverride)
-        : (typeof rule.base === 'function' ? rule.base(month) : rule.base);
+        : (typeof rule.base === 'function' ? rule.base(month, mId) : rule.base);
     
     if (base < target) {
         // Normal case: higher is better
@@ -103,7 +127,7 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
         if (val >= target) return 100;
         return Math.max(0, Math.min(100, Math.round(((val - base) / (target - base)) * 100)));
     } else {
-        // Inverse case: lower is better
+        // Inverse case: lower is better (e.g. ROTACION, STOCK A+T+M)
         if (val >= base) return 0;
         if (val <= target) return 100;
         return Math.max(0, Math.min(100, Math.round(((base - val) / (base - target)) * 100)));
@@ -236,11 +260,11 @@ const App = () => {
         if (!objMeta || !objData.e) return 0;
 
         if (!objMeta.sub) {
-            return calculateAch(oId, objData.v, monthIndex, objData.t, objData.b);
+            return calculateAch(oId, objData.v, monthIndex, mId, objData.t, objData.b);
         } else {
             const enabledSubs = objMeta.sub.filter(s => objData.s?.[s.id]?.e);
             if (enabledSubs.length === 0) return 0;
-            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s?.[s.id]?.v || 0, monthIndex, objData.s?.[s.id]?.t, objData.s?.[s.id]?.b), 0);
+            const sum = enabledSubs.reduce((acc, s) => acc + calculateAch(s.id, objData.s?.[s.id]?.v || 0, monthIndex, mId, objData.s?.[s.id]?.t, objData.s?.[s.id]?.b), 0);
             return Math.round(sum / enabledSubs.length);
         }
     };
@@ -250,7 +274,7 @@ const App = () => {
         if (!data || !data[mId] || !data[mId][oId] || !data[mId][oId][key]) return 0;
         const subData = data[mId][oId][key].s?.[sId];
         if (!subData || !subData.e) return 0;
-        return calculateAch(sId, subData.v || 0, monthIndex, subData.t, subData.b);
+        return calculateAch(sId, subData.v || 0, monthIndex, mId, subData.t, subData.b);
     };
 
     const calculateTimeframeAvg = (mId, oId, timeframe) => {
@@ -731,8 +755,8 @@ const App = () => {
                             const isWide = (obj.id === 'obj2' || obj.id === 'obj5');
                             const colSpan = isWide ? 'md:col-span-12 lg:col-span-6 xl:col-span-6' : 'md:col-span-12 lg:col-span-6 xl:col-span-4';
 
-                            const baseVal = oData.b ?? getSafeRuleBase(obj.id, mIdx);
-                            const targetVal = oData.t ?? getSafeRuleTarget(obj.id, mIdx);
+                            const baseVal = oData.b ?? getSafeRuleBase(obj.id, mIdx, activeManager.id);
+                            const targetVal = oData.t ?? getSafeRuleTarget(obj.id, mIdx, activeManager.id);
 
                             return (
                                 <div key={obj.id} className={`${colSpan} glass-card p-10 rounded-[2.5rem] border-0 shadow-[0_20px_60px_rgba(0,0,0,0.02)] flex flex-col bg-white ring-1 ring-slate-100`}>
@@ -765,9 +789,9 @@ const App = () => {
                                                 if (!sData.e) return null;
                                                 const sAch = (isAccumulated || isQuarter) 
                                                     ? calculateSubTimeframeAvg(activeManager.id, obj.id, s.id, activeMonth)
-                                                    : calculateAch(s.id, sData.v || 0, mIdx, sData.t, sData.b);
-                                                const sTarget = sData.t ?? getSafeRuleTarget(s.id, mIdx);
-                                                const sBase = sData.b ?? getSafeRuleBase(s.id, mIdx);
+                                                    : calculateAch(s.id, sData.v || 0, mIdx, activeManager.id, sData.t, sData.b);
+                                                const sTarget = sData.t ?? getSafeRuleTarget(s.id, mIdx, activeManager.id);
+                                                const sBase = sData.b ?? getSafeRuleBase(s.id, mIdx, activeManager.id);
                                                 return (
                                                     <div key={s.id} className="w-full">
                                                         {renderProgressBar(
