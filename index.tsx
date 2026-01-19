@@ -35,8 +35,9 @@ const getMonthWithQuarter = (idx: number) => {
 
 const OBJECTIVE_RULES = {
     's1': { label: (v) => `Venta +${v}%`, target: 10, base: 0, unit: '%' },      
-    's2': { label: (v) => `MAP +${v}%`, target: 1, base: 0, unit: '%' },       
-    's3': { label: (v) => `Gama >${v}%`, target: 85, base: 80, unit: '%' },     
+    's2': { label: (v) => `ROTACION <${v}`, target: 59.50, base: 60.80, unit: '' },       
+    's3': { label: (v) => `STOCK A+T+M <${v}%`, target: 10.50, base: 11.80, unit: '%' },     
+    's4': { label: (v) => `% MDH >${v}%`, target: 41.00, base: 36.37, unit: '%' },
     'obj2': { label: (v) => `Satisfacción >${v}pts`, target: 70, base: 60, unit: 'pts' }, 
     'f1': { label: (v) => `Demarca Con. >${v}pts`, target: 80, base: 59, unit: 'pts' },    
     'f2': { label: (v) => `Demarca Des. >${v}pts`, target: 80, base: 59, unit: 'pts' },    
@@ -55,7 +56,7 @@ const OBJECTIVE_RULES = {
 };
 
 const OBJECTIVES = [
-    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'MAP'}, {id:'s3', name:'Gama'}] },
+    { id: 'obj1', name: 'PERFORMANCE', sub: [{id:'s1', name:'Venta'}, {id:'s2', name:'ROTACION'}, {id:'s3', name:'STOCK A+T+M'}, {id:'s4', name:'% MDH'}] },
     { id: 'obj3', name: 'FULLGREEN', sub: [{id:'f1', name:'Demarca Con.'}, {id:'f2', name:'Demarca Des.'}, {id:'f3', name:'Rev. Descuentos'}, {id:'f4', name:'Rev. Cod 48'}] },
     { id: 'obj4', name: 'TALENTO', sub: [{id:'t1', name:'Formaciones'}, {id:'t2', name:'One & One'}, {id:'t3', name:'PDI'}, {id:'t4', name:'ENPS'}], quarterly: true },
     { id: 'obj2', name: 'SATISFACCIÓN CLIENTE' },
@@ -96,10 +97,17 @@ const calculateAch = (id, val, month, targetOverride = null, baseOverride = null
         ? parseFloat(baseOverride)
         : (typeof rule.base === 'function' ? rule.base(month) : rule.base);
     
-    if (val <= base) return 0;
-    if (val >= target) return 100;
-    const achievement = ((val - base) / (target - base)) * 100;
-    return Math.max(0, Math.min(100, Math.round(achievement)));
+    if (base < target) {
+        // Normal case: higher is better
+        if (val <= base) return 0;
+        if (val >= target) return 100;
+        return Math.max(0, Math.min(100, Math.round(((val - base) / (target - base)) * 100)));
+    } else {
+        // Inverse case: lower is better
+        if (val >= base) return 0;
+        if (val <= target) return 100;
+        return Math.max(0, Math.min(100, Math.round(((base - val) / (base - target)) * 100)));
+    }
 };
 
 const getHeatColor = (val) => {
