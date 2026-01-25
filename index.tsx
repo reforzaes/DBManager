@@ -170,8 +170,15 @@ const App = () => {
     }, []);
 
     const saveToDb = async (newData: any, newComp: any) => {
-        try { await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: newData, completions: newComp }) }); }
-        catch (e) { console.error(e); }
+        try { 
+            const res = await fetch(API_URL, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ data: newData, completions: newComp }) 
+            });
+            const result = await res.json();
+            if(result.status !== "success") console.error("Error al guardar:", result);
+        } catch (e) { console.error("Error de red:", e); }
     };
 
     const handleUpdate = (newData: any, newComp: any) => {
@@ -201,11 +208,11 @@ const App = () => {
         if (!comp?.[mId]) return 0;
         let monthsToAverage: string[] = [];
         if (timeframe === 'accumulated') {
-            monthsToAverage = Object.keys(comp[mId]).filter(mKey => comp[mKey] === true);
+            monthsToAverage = Object.keys(comp[mId]).filter(mKey => comp[mId][mKey] === true);
         } else if (timeframe.startsWith('q')) {
             const q = parseInt(timeframe.charAt(1));
             const start = (q - 1) * 3;
-            monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId][mKey] === true);
+            monthsToAverage = [start, start + 1, start + 2].map(String).filter(mKey => comp[mId]?.[mKey] === true);
         }
         
         const scores = monthsToAverage.map(mKey => getObjectiveAchievement(mId, oId, parseInt(mKey)));
@@ -426,9 +433,37 @@ const App = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {OBJECTIVES.map(obj => {
                             if (obj.quarterly && ![2, 5, 8, 11].includes(mIdx)) return null;
-                            const timeframeAch = (isAccumulated || isQuarter) ? calculateTimeframeAvg(activeManager.id, obj.id, activeMonth) : getObjectiveAchievement(activeManager.id, obj.id, mIdx);
                             const oData = data[activeManager.id]?.[obj.id]?.[String(mIdx)] || { e: true, s: {} };
                             if (!oData.e) return null;
+
+                            // Calculamos las sub-metas primero para sacar el promedio de la tarjeta
+                            const subResults = obj.sub.map(s => {
+                                const rule = OBJECTIVE_RULES[s.id];
+                                let rawVal: number = 0;
+                                let customB: number | undefined;
+                                let customT: number | undefined;
+
+                                if (isAccumulated || isQuarter) {
+                                    const closedMonths = Object.keys(comp[activeManager.id] || {}).filter(mKey => comp[activeManager.id][mKey] === true);
+                                    const values = closedMonths.map(mKey => data[activeManager.id][obj.id][mKey]?.s?.[s.id]?.v || 0);
+                                    rawVal = values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)) : 0;
+                                    
+                                    const bases = closedMonths.map(mKey => data[activeManager.id][obj.id][mKey]?.s?.[s.id]?.b ?? (typeof rule.base === 'function' ? rule.base(parseInt(mKey), activeManager.id) : rule.base));
+                                    customB = bases.length > 0 ? Number((bases.reduce((a, b) => a + b, 0) / bases.length).toFixed(2)) : (typeof rule.base === 'function' ? rule.base(mIdx, activeManager.id) : rule.base);
+                                    
+                                    const targets = closedMonths.map(mKey => data[activeManager.id][obj.id][mKey]?.s?.[s.id]?.t ?? (typeof rule.target === 'function' ? rule.target(parseInt(mKey), activeManager.id) : rule.target));
+                                    customT = targets.length > 0 ? Number((targets.reduce((a, b) => a + b, 0) / targets.length).toFixed(2)) : (typeof rule.target === 'function' ? rule.target(mIdx, activeManager.id) : rule.target);
+                                } else {
+                                    rawVal = oData.s?.[s.id]?.v || 0;
+                                    customB = oData.s?.[s.id]?.b;
+                                    customT = oData.s?.[s.id]?.t;
+                                }
+                                
+                                const sAch = calculateAch(s.id, rawVal, mIdx, activeManager.id, customB, customT);
+                                return { s, rule, rawVal, customB, customT, sAch };
+                            });
+
+                            const timeframeAch = Math.round(subResults.reduce((acc, curr) => acc + curr.sAch, 0) / subResults.length);
 
                             return <div key={obj.id} className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
                                 <div className="flex justify-between items-center mb-12">
@@ -436,32 +471,10 @@ const App = () => {
                                     <span className="text-4xl font-black tabular-nums" style={{ color: getHeatColor(timeframeAch) }}>{timeframeAch}%</span>
                                 </div>
                                 <div className="grid grid-cols-1 gap-12">
-                                    {obj.sub.map(s => {
-                                        const rule = OBJECTIVE_RULES[s.id];
-                                        let rawVal: number = 0;
-                                        let customB: number | undefined;
-                                        let customT: number | undefined;
-
-                                        if (isAccumulated || isQuarter) {
-                                            const closedMonths = Object.keys(comp[activeManager.id]).filter(mKey => comp[activeManager.id][mKey] === true);
-                                            const values = closedMonths.map(mKey => data[activeManager.id][obj.id][mKey]?.s?.[s.id]?.v || 0);
-                                            rawVal = values.length > 0 ? Number((values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)) : 0;
-                                            
-                                            const bases = closedMonths.map(mKey => data[activeManager.id][obj.id][mKey]?.s?.[s.id]?.b ?? (typeof rule.base === 'function' ? rule.base(parseInt(mKey), activeManager.id) : rule.base));
-                                            customB = Number((bases.reduce((a, b) => a + b, 0) / bases.length).toFixed(2));
-                                            const targets = closedMonths.map(mKey => data[activeManager.id][obj.id][mKey]?.s?.[s.id]?.t ?? (typeof rule.target === 'function' ? rule.target(parseInt(mKey), activeManager.id) : rule.target));
-                                            customT = Number((targets.reduce((a, b) => a + b, 0) / targets.length).toFixed(2));
-                                        } else {
-                                            rawVal = oData.s?.[s.id]?.v || 0;
-                                            customB = oData.s?.[s.id]?.b;
-                                            customT = oData.s?.[s.id]?.t;
-                                        }
-                                        
+                                    {subResults.map(({ s, rule, rawVal, customB, customT, sAch }) => {
                                         const targetValue = customT !== undefined ? customT : (typeof rule.target === 'function' ? rule.target(mIdx, activeManager.id) : rule.target);
                                         const baseValue = customB !== undefined ? customB : (typeof rule.base === 'function' ? rule.base(mIdx, activeManager.id) : rule.base);
-                                        const sAch = calculateAch(s.id, rawVal, mIdx, activeManager.id, customB, customT);
                                         const color = getHeatColor(sAch);
-                                        
                                         const isSpecialKpi = rule.label === SPECIAL_NAME;
 
                                         return (
@@ -472,13 +485,7 @@ const App = () => {
                                                             {isAccumulated ? 'PROM. ' : ''}{rule.label}
                                                         </span>
                                                         {isSpecialKpi && (
-                                                            <a 
-                                                                href={SPECIAL_URL} 
-                                                                target="_blank" 
-                                                                rel="noopener noreferrer"
-                                                                className="text-indigo-500 hover:text-indigo-700 transition-colors text-[10px] flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100"
-                                                                title="Abrir enlace externo"
-                                                            >
+                                                            <a href={SPECIAL_URL} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:text-indigo-700 transition-colors text-[10px] flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
                                                                 Ver AMP <i className="fas fa-external-link-alt"></i>
                                                             </a>
                                                         )}
