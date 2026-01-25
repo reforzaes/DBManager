@@ -146,7 +146,7 @@ const App = () => {
                 });
             });
         });
-        setData(initData); setComp(initComp);
+        return { data: initData, comp: initComp };
     };
 
     useEffect(() => {
@@ -154,9 +154,19 @@ const App = () => {
             try {
                 const res = await fetch(API_URL + "?t=" + Date.now());
                 const json = await res.json();
-                if (json && json.data) { setData(json.data); setComp(json.completions); }
-                else initializeDefault();
-            } catch (e) { initializeDefault(); }
+                if (json && json.data && Object.keys(json.data).length > 0) { 
+                    setData(json.data); 
+                    setComp(json.completions); 
+                } else {
+                    const defaults = initializeDefault();
+                    setData(defaults.data);
+                    setComp(defaults.comp);
+                }
+            } catch (e) { 
+                const defaults = initializeDefault();
+                setData(defaults.data);
+                setComp(defaults.comp);
+            }
         };
         load();
         const handleClickOutside = (event: MouseEvent) => {
@@ -184,6 +194,19 @@ const App = () => {
     const handleUpdate = (newData: any, newComp: any) => {
         if (isAccumulated || isQuarter) return;
         setData({...newData}); setComp({...newComp}); saveToDb(newData, newComp);
+    };
+
+    // FUNCIÓN SEGURA PARA ACTUALIZAR OBJETOS ANIDADOS
+    const safeNestedUpdate = (mId: string, oId: string, month: string, sId: string, field: 'v' | 'b' | 't', value: number) => {
+        const newData = { ...data };
+        if (!newData[mId]) newData[mId] = {};
+        if (!newData[mId][oId]) newData[mId][oId] = {};
+        if (!newData[mId][oId][month]) newData[mId][oId][month] = { e: true, s: {} };
+        if (!newData[mId][oId][month].s) newData[mId][oId][month].s = {};
+        if (!newData[mId][oId][month].s[sId]) newData[mId][oId][month].s[sId] = { v: 0, b: undefined, t: undefined };
+        
+        newData[mId][oId][month].s[sId][field] = value;
+        handleUpdate(newData, comp);
     };
 
     const getObjectiveAchievement = (mId: string, oId: string, monthIndex: number) => {
@@ -259,7 +282,7 @@ const App = () => {
 
     const activeManager = view !== 'comparison' && view !== 'editor' ? MANAGERS.find(m => m.id === view) : null;
 
-    if (!data) return <div className="min-h-screen flex items-center justify-center font-black text-indigo-400 uppercase">Cargando datos...</div>;
+    if (!data) return <div className="min-h-screen flex items-center justify-center font-black text-indigo-400 uppercase">Iniciando Dashboard...</div>;
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -389,7 +412,12 @@ const App = () => {
                                 const oData = data[m.id]?.[obj.id]?.[String(mIdx)] || { e: true, s: {} };
                                 return <div key={obj.id} className="p-5 rounded-2xl bg-slate-50 border border-slate-100">
                                     <div className="flex justify-between mb-4"><span className="text-[10px] font-black uppercase text-slate-500">{obj.name}</span>
-                                        {editorRole === 'super' && !isAccumulated && <input type="checkbox" checked={oData.e} onChange={e => { const newData = {...data}; newData[m.id][obj.id][String(mIdx)].e = e.target.checked; handleUpdate(newData, comp); }} />}
+                                        {editorRole === 'super' && !isAccumulated && <input type="checkbox" checked={oData.e} onChange={e => { 
+                                            const newData = {...data}; 
+                                            if (!newData[m.id][obj.id][String(mIdx)]) newData[m.id][obj.id][String(mIdx)] = { e: true, s: {} };
+                                            newData[m.id][obj.id][String(mIdx)].e = e.target.checked; 
+                                            handleUpdate(newData, comp); 
+                                        }} />}
                                     </div>
                                     <div className="space-y-4">
                                         {obj.sub.map(s => {
@@ -405,19 +433,19 @@ const App = () => {
                                                         initialValue={oData.s?.[s.id]?.b ?? defBase} 
                                                         disabled={isAccumulated || editorRole === 'standard'} 
                                                         label="Mín (Base)" 
-                                                        onSave={(v) => { const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].b = v; handleUpdate(newData, comp); }} 
+                                                        onSave={(v) => safeNestedUpdate(m.id, obj.id, String(mIdx), s.id, 'b', v)} 
                                                     />
                                                     <SmartNumericInput 
                                                         initialValue={oData.s?.[s.id]?.v || 0} 
                                                         disabled={isAccumulated} 
                                                         label="Valor" 
-                                                        onSave={(v) => { const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].v = v; handleUpdate(newData, comp); }} 
+                                                        onSave={(v) => safeNestedUpdate(m.id, obj.id, String(mIdx), s.id, 'v', v)} 
                                                     />
                                                     <SmartNumericInput 
                                                         initialValue={oData.s?.[s.id]?.t ?? defTarget} 
                                                         disabled={isAccumulated || editorRole === 'standard'} 
                                                         label="Máx (Obj)" 
-                                                        onSave={(v) => { const newData = {...data}; newData[m.id][obj.id][String(mIdx)].s[s.id].t = v; handleUpdate(newData, comp); }} 
+                                                        onSave={(v) => safeNestedUpdate(m.id, obj.id, String(mIdx), s.id, 't', v)} 
                                                     />
                                                 </div>
                                             </div>
@@ -465,7 +493,7 @@ const App = () => {
 
                             const timeframeAch = Math.round(subResults.reduce((acc, curr) => acc + curr.sAch, 0) / subResults.length);
 
-                            return <div key={obj.id} className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
+                            return <div key={obj.id} className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[400px]">
                                 <div className="flex justify-between items-center mb-12">
                                     <h4 className="text-xl font-black uppercase text-slate-900 tracking-tighter">{obj.name}</h4>
                                     <span className="text-4xl font-black tabular-nums" style={{ color: getHeatColor(timeframeAch) }}>{timeframeAch}%</span>
